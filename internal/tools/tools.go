@@ -39,4 +39,10 @@ var All = []Tool{
 		Why:  "lockfile CVE scan",
 		Deep: true,
 	},
+	{
+		Name: "capslock",
+		Pkg:  "github.com/google/capslock/cmd/capslock",
+		Why:  "dependency capability analysis",
+		Deep: true,
+	},
 }

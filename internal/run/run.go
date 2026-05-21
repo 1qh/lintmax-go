@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/tools"
 	"github.com/1qh/lintmax-go/internal/transform"
+	"github.com/1qh/lintmax-go/internal/version"
 )
 
 const (
@@ -49,11 +51,12 @@ func EnsureLatest(ctx context.Context, includeDeep bool) error {
 		if tool.Deep && !includeDeep {
 			continue
 		}
-		_, _ = fmt.Fprintf(os.Stderr, "• %s@latest (%s)\n", tool.Name, tool.Why)
 		cmd := exec.CommandContext(ctx, goCmd, "install", tool.Pkg+"@latest") //nolint:gosec // static registry paths
-		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
+		var buf bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &buf, &buf
 		err := cmd.Run()
 		if err != nil {
+			fmt.Fprint(os.Stderr, buf.String())
 			return fmt.Errorf("install %s: %w", tool.Name, err)
 		}
 	}
@@ -75,10 +78,38 @@ func writeConfig() (string, error) {
 
 func sh(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // fixed tool invocations
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()
 	if err != nil {
+		fmt.Fprint(os.Stderr, buf.String())
 		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
+
+func Upgrade(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, goCmd, "install", version.Self+"@latest") //nolint:gosec // fixed self path
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	err := cmd.Run()
+	if err != nil {
+		fmt.Fprint(os.Stderr, buf.String())
+		return fmt.Errorf("upgrade: %w", err)
+	}
+	return nil
+}
+
+func Rules(ctx context.Context) error {
+	cfg, err := writeConfig()
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, bin("golangci-lint"), "linters", "--config", cfg) //nolint:gosec // fixed invocation
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	runErr := cmd.Run()
+	if runErr != nil {
+		return fmt.Errorf("rules: %w", runErr)
 	}
 	return nil
 }
@@ -131,6 +162,10 @@ func steps(cfg string, fix, deep bool) []step {
 			step{
 				name: "osv-scanner",
 				run:  func(c context.Context) error { return sh(c, bin("osv-scanner"), "scan", "source", "-r", ".") },
+			},
+			step{
+				name: "capslock",
+				run:  func(c context.Context) error { return sh(c, bin("capslock"), "-packages", "./...") },
 			},
 		)
 	}

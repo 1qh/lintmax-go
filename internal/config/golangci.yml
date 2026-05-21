@@ -23,6 +23,8 @@ linters:
     - depguard          # empty allowlist denies ALL imports; non-functional without per-project config
     - gochecknoglobals  # map-literal data can't be const; parity: lintmax allows module-level decls
     - mnd               # parity: no-magic-numbers off (same as revive add-constant)
+    - gomodguard        # deprecated v2.12.0; superseded by gomodguard_v2 (in default:all)
+    - testpackage       # no lintmax/eslint equivalent; forces black-box-only, can't test unexported entrypoints
   settings:
     errcheck:
       check-type-assertions: true

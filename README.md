@@ -23,11 +23,14 @@ go install github.com/1qh/lintmax-go@latest
 ```
 lintmax-go fix      # format + autofix + fast gate
 lintmax-go check    # verify only, no writes (CI)
-lintmax-go update   # reinstall every tool @latest
-lintmax-go fix --deep / check --deep   # + slow scanners (govulncheck, osv-scanner)
+lintmax-go update   # reinstall every linter tool @latest
+lintmax-go upgrade  # reinstall lintmax-go itself @latest
+lintmax-go version  # print version
+lintmax-go rules    # list every enabled linter under the maxed config
+lintmax-go fix --deep / check --deep   # + slow scanners (govulncheck, osv-scanner, capslock)
 ```
 
-Silent on success. Exit 0 = clean.
+Silent on success — zero output, exit 0 = clean. Tool output is shown only on failure.
 
 ## What runs
 
