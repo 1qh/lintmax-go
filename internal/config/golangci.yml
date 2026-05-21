@@ -1,0 +1,85 @@
+# lintmax-go embedded config — maximum strictness, golangci-lint v2.
+# Philosophy: default ALL (auto-inherit every new linter the moment golangci ships it),
+# disable ONLY physical conflicts, max every linter's internal checks, no silent exclusions.
+version: "2"
+
+linters:
+  default: all
+  disable:
+    # physical conflicts only (two linters whose output literally fights) — NOT style opinions.
+    - nlreturn    # fights wsl_v5 on blank-line placement; keep wsl_v5
+    # depguard with no rules denies ALL imports — it is purely project-specific
+    # (its whole job is banning chosen packages). Projects enable + configure it
+    # in their own override; it cannot live in a generic max config.
+    - depguard
+    - gomodguard  # deprecated since v2.12.0 → superseded by gomodguard_v2 (in default:all)
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      # writes to stdout/stderr cannot be meaningfully handled; everything else stays checked.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    govet:
+      enable-all: true
+    staticcheck:
+      checks:
+        - all  # SA (bugs) + S (simplify) + ST (style) + QF (quickfix)
+    gocritic:
+      enable-all: true
+    revive:
+      enable-all-rules: true
+      rules:
+        # golines owns line length (120); revive's default 80 fights it.
+        - name: line-length-limit
+          arguments: [120]
+        # 0/1/2 and "" are not magic — flagging them is noise, not strictness.
+        - name: add-constant
+          arguments:
+            - allowInts: "0,1,2"
+              allowStrs: '""'
+              maxLitCount: "3"
+        # fmt.Print* to stdout/stderr genuinely cannot fail-meaningfully; the rest stay checked.
+        - name: unhandled-error
+          arguments:
+            - "fmt.Print.*"
+            - "fmt.Fprint.*"
+    gosec:
+      severity: low
+      confidence: low
+    exhaustive:
+      default-signifies-exhaustive: false
+    nakedret:
+      max-func-lines: 0
+    ireturn:
+      allow:
+        - error
+        - empty
+        - stdlib
+        - generic
+  exclusions:
+    # turn OFF golangci's silent default suppressions — report everything.
+    generated: lax
+    presets: []
+    rules: []
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+    - golines
+  settings:
+    gofumpt:
+      extra-rules: true
+    golines:
+      max-len: 120
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  tests: true
+  modules-download-mode: readonly
