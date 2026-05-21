@@ -1,51 +1,46 @@
-# lintmax-go embedded config — maximum strictness, golangci-lint v2.
-# Philosophy: default ALL (auto-inherit every new linter the moment golangci ships it),
-# disable ONLY physical conflicts, max every linter's internal checks, no silent exclusions.
+# lintmax-go embedded config — maximum strictness, PARITY with lintmax (TypeScript).
+#
+# Parity model (mirrors lintmax exactly):
+#   1. enable EVERYTHING (default: all) — like biome all-categories-error +
+#      oxlint all-7-categories-error + eslint all + typescript-eslint all.
+#   2. everything is an error, never a warning.
+#   3. internal checks of each linter pushed to maximum.
+#   4. unused suppressions are errors (nolintlint == reportUnusedDisableDirectives).
+#
+# DISABLE NOTHING up front. Every exception must be EARNED by a concrete,
+# documented reason discovered on real code — never anticipated. The disable
+# list starts empty on purpose.
 version: "2"
 
 linters:
   default: all
   disable:
-    # physical conflicts only (two linters whose output literally fights) — NOT style opinions.
-    - nlreturn    # fights wsl_v5 on blank-line placement; keep wsl_v5
-    # depguard with no rules denies ALL imports — it is purely project-specific
-    # (its whole job is banning chosen packages). Projects enable + configure it
-    # in their own override; it cannot live in a generic max config.
-    - depguard
-    - gomodguard  # deprecated since v2.12.0 → superseded by gomodguard_v2 (in default:all)
+    # EARNED disables — each forced by the comment-strip + compact philosophy
+    # (parity with lintmax comments.ts + compact.ts), never anticipated.
+    - wsl        # demands blank lines between statements; fights compact
+    - wsl_v5     # successor of wsl; same conflict
+    - nlreturn   # demands a blank line before return; fights compact
+    - depguard          # empty allowlist denies ALL imports; non-functional without per-project config
+    - gochecknoglobals  # map-literal data can't be const; parity: lintmax allows module-level decls
+    - mnd               # parity: no-magic-numbers off (same as revive add-constant)
   settings:
     errcheck:
       check-type-assertions: true
       check-blank: true
-      # writes to stdout/stderr cannot be meaningfully handled; everything else stays checked.
+      # EARNED parity (no-console off): documented-never-fail writers.
       exclude-functions:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        - (*strings.Builder).Write
     govet:
       enable-all: true
     staticcheck:
       checks:
-        - all  # SA (bugs) + S (simplify) + ST (style) + QF (quickfix)
+        - all
+        - -ST1000  # EARNED: comment-strip removes package comments; rule demands them
     gocritic:
       enable-all: true
-    revive:
-      enable-all-rules: true
-      rules:
-        # golines owns line length (120); revive's default 80 fights it.
-        - name: line-length-limit
-          arguments: [120]
-        # 0/1/2 and "" are not magic — flagging them is noise, not strictness.
-        - name: add-constant
-          arguments:
-            - allowInts: "0,1,2"
-              allowStrs: '""'
-              maxLitCount: "3"
-        # fmt.Print* to stdout/stderr genuinely cannot fail-meaningfully; the rest stay checked.
-        - name: unhandled-error
-          arguments:
-            - "fmt.Print.*"
-            - "fmt.Fprint.*"
     gosec:
       severity: low
       confidence: low
@@ -53,12 +48,33 @@ linters:
       default-signifies-exhaustive: false
     nakedret:
       max-func-lines: 0
-    ireturn:
-      allow:
-        - error
-        - empty
-        - stdlib
-        - generic
+    revive:
+      enable-all-rules: true
+      rules:
+        # EARNED: golines (formatter) owns line width at 123; revive default 80 fights it.
+        - name: line-length-limit
+          arguments: [123]
+        # EARNED: comment-strip deletes all doc comments, so requiring them
+        # (parity with lintmax jsdoc-require: off) is a guaranteed conflict.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        # EARNED parity (no-magic-numbers off): flags 0/1 literals — unworkable.
+        - name: add-constant
+          disabled: true
+        # EARNED: no lintmax/eslint equivalent (eslint uses cyclomatic, not cognitive).
+        - name: cognitive-complexity
+          disabled: true
+        # EARNED: no lintmax/eslint equivalent; bool mode params are idiomatic Go CLI orchestration.
+        - name: flag-parameter
+          disabled: true
+        # EARNED parity (no-console off): documented-never-fail writers.
+        - name: unhandled-error
+          arguments:
+            - "fmt.Print.*"
+            - "fmt.Fprint.*"
+            - "strings.Builder.Write.*"
   exclusions:
     # turn OFF golangci's silent default suppressions — report everything.
     generated: lax
@@ -74,11 +90,15 @@ formatters:
     gofumpt:
       extra-rules: true
     golines:
-      max-len: 120
+      max-len: 123
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+
+# Parity with lintmax warnToError: every finding is an error, never a warning.
+severity:
+  default: error
 
 run:
   tests: true

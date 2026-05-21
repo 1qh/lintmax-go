@@ -1,23 +1,12 @@
-// Package tools declares the external tools lintmax-go orchestrates.
-// No version is ever pinned: every tool is fetched @latest so the setup never goes stale.
 package tools
 
-// Tool is one external binary lintmax-go installs and runs.
 type Tool struct {
-	// Name is the invoked binary name.
 	Name string
-	// Pkg is the go-installable package path (always resolved @latest).
-	Pkg string
-	// Why documents the strictness layer this tool covers.
-	Why string
-	// Deep marks slow tools that run only in the deep gate, not the fast inner loop.
+	Pkg  string
+	Why  string
 	Deep bool
 }
 
-// All is the full orchestrated set. golangci-lint bundles ~115 linters at
-// maintainer-compatible versions, so tracking it @latest keeps all of them fresh;
-// the rest are tools golangci deliberately does not wrap.
-//
 //nolint:gochecknoglobals // the tool registry is the package's data, inherently global
 var All = []Tool{
 	{

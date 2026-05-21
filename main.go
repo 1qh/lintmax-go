@@ -1,5 +1,3 @@
-// Command lintmax-go is the reusable maximum-strictness Go quality gate.
-// It never pins linter versions: every tool is fetched @latest so the setup never goes stale.
 package main
 
 import (
@@ -12,13 +10,11 @@ import (
 )
 
 const usage = `lintmax-go — maximum-strictness Go quality gate (always-latest, never stale)
-
 usage:
   lintmax fix       format + autofix + full fast gate
   lintmax check     verify only, no writes (CI mode)
   lintmax update    reinstall every tool @latest
   lintmax fix --deep / check --deep   add slow scanners (govulncheck, osv-scanner)
-
 silent on success, exit 0 = clean.`
 
 const (
@@ -35,10 +31,8 @@ func realMain(args []string) int {
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
-
 	deep := slices.Contains(args[1:], "--deep")
 	ctx := context.Background()
-
 	switch args[0] {
 	case "update":
 		return report(run.EnsureLatest(ctx, true))
@@ -47,7 +41,6 @@ func realMain(args []string) int {
 		if err != nil {
 			return report(err)
 		}
-
 		return report(run.Gate(ctx, args[0] == "fix", deep))
 	default:
 		fmt.Fprintln(os.Stdout, usage)
@@ -60,6 +53,5 @@ func report(err error) int {
 		fmt.Fprintln(os.Stderr, "lintmax-go:", err)
 		return exitFail
 	}
-
 	return exitOK
 }
