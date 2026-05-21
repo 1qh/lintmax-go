@@ -25,6 +25,7 @@ linters:
     - mnd               # parity: no-magic-numbers off (same as revive add-constant)
     - gomodguard        # deprecated v2.12.0; superseded by gomodguard_v2 (in default:all)
     - testpackage       # no lintmax/eslint equivalent; forces black-box-only, can't test unexported entrypoints
+    - exhaustruct       # opt-out is //exhaustruct:optional comments, which comment-strip deletes — incompatible with the comment-strip philosophy
   settings:
     errcheck:
       check-type-assertions: true
@@ -37,6 +38,10 @@ linters:
         - (*strings.Builder).Write
     govet:
       enable-all: true
+      # fieldalignment reorders fields for memory packing; fights readable JSON-DTO
+      # field order, no lintmax/eslint equivalent (JS has no memory layout).
+      disable:
+        - fieldalignment
     staticcheck:
       checks:
         - all
@@ -70,6 +75,9 @@ linters:
           disabled: true
         # EARNED: no lintmax/eslint equivalent; bool mode params are idiomatic Go CLI orchestration.
         - name: flag-parameter
+          disabled: true
+        # EARNED: arbitrary cap (default 5), absurd for a types/wire file; no lintmax equivalent.
+        - name: max-public-structs
           disabled: true
         # EARNED parity (no-console off): documented-never-fail writers.
         - name: unhandled-error
