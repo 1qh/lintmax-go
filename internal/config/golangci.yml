@@ -28,6 +28,7 @@ linters:
     - exhaustruct       # opt-out is //exhaustruct:optional comments, which comment-strip deletes — incompatible with the comment-strip philosophy
     - tagliatelle       # systematically fights structs mirroring external JSON (vendor/API response shapes dictate tag case); no lintmax equivalent
     - varnamelen        # parity: lintmax disables id-length; fights idiomatic Go short names (i, r, w, c, k, v, ok); most-disabled linter in the ecosystem
+    - goconst           # flags repeated API/path-segment strings (list/get/create across many tools); they are the surface, not magic constants; no lintmax equivalent
   settings:
     errcheck:
       check-type-assertions: true
