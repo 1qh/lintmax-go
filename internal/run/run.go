@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/1qh/lintmax-go/internal/config"
+	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
 	"github.com/1qh/lintmax-go/internal/transform"
 	"github.com/1qh/lintmax-go/internal/version"
@@ -46,7 +47,39 @@ func binDir() string {
 	return filepath.Join(home, goCmd, "bin")
 }
 func bin(name string) string { return filepath.Join(binDir(), name) }
+func toolVersion(ctx context.Context, binPath string) string {
+	out, err := exec.CommandContext(ctx, goCmd, "version", "-m", binPath).Output() //nolint:gosec // fixed binary path
+	if err != nil {
+		return emptyArg
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == "mod" {
+			return fields[2]
+		}
+	}
+	return emptyArg
+}
+
+func reportBumps(ctx context.Context, installed []tools.Tool) {
+	prev := state.Load()
+	next := state.State{Versions: map[string]string{}}
+	for _, tool := range installed {
+		ver := toolVersion(ctx, bin(tool.Name))
+		next.Versions[tool.Name] = ver
+		old := prev.Versions[tool.Name]
+		if old != emptyArg && old != ver {
+			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver)
+		}
+	}
+	saveErr := next.Save()
+	if saveErr != nil {
+		fmt.Fprintln(os.Stderr, "lintmax-go: version cache:", saveErr)
+	}
+}
+
 func EnsureLatest(ctx context.Context, includeDeep bool) error {
+	var installed []tools.Tool
 	for _, tool := range tools.All {
 		if tool.Deep && !includeDeep {
 			continue
@@ -59,7 +92,9 @@ func EnsureLatest(ctx context.Context, includeDeep bool) error {
 			fmt.Fprint(os.Stderr, buf.String())
 			return fmt.Errorf("install %s: %w", tool.Name, err)
 		}
+		installed = append(installed, tool)
 	}
+	reportBumps(ctx, installed)
 	return nil
 }
 
