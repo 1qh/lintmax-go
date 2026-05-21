@@ -13,7 +13,12 @@ import (
 var (
 	keepComment  = regexp.MustCompile(`^//(go:|line\b|export\b|sys\b|sysnb\b|extern\b|nolint|cgo)|^/[*] *#|^// \+build`)
 	multiNewline = regexp.MustCompile(`(?:\r?\n){3,}`)
+	generated    = regexp.MustCompile(`(?m)^// Code generated .* DO NOT EDIT\.$`)
 )
+
+func IsGenerated(src []byte) bool {
+	return generated.Match(src)
+}
 
 type commentRange struct {
 	start int

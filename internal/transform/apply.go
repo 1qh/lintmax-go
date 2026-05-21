@@ -45,6 +45,9 @@ func run(root string, write bool) ([]string, error) {
 		if readErr != nil {
 			return nil, fmt.Errorf("read %s: %w", path, readErr)
 		}
+		if IsGenerated(orig) {
+			continue
+		}
 		out := Compact(StripComments(orig))
 		if bytes.Equal(out, orig) {
 			continue

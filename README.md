@@ -15,14 +15,19 @@ No linter version is ever pinned. Every tool is fetched `@latest` on each run, a
 ## Install
 
 ```
-go install github.com/1qh/lintmax-go@latest
+go install github.com/1qh/lintmax-go@latest   # Go users
+# or, prebuilt binary (no Go required):
+curl -fsSL https://raw.githubusercontent.com/1qh/lintmax-go/main/install.sh | sh
 ```
+
+Then `lintmax-go init` drops a `.editorconfig` (tab_width=2) + CI workflow into your project.
 
 ## Use
 
 ```
 lintmax-go fix      # format + autofix + fast gate
 lintmax-go check    # verify only, no writes (CI)
+lintmax-go init     # scaffold .editorconfig + CI workflow
 lintmax-go update   # reinstall every linter tool @latest
 lintmax-go upgrade  # reinstall lintmax-go itself @latest
 lintmax-go version  # print version

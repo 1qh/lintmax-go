@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 	emptyArg   = ""
 	goCmd      = "go"
 	configMode = 0o600
+	dirPerm    = 0o755
 	refreshTTL = 24 * time.Hour
 )
 
@@ -48,7 +50,14 @@ func binDir() string {
 	}
 	return filepath.Join(home, goCmd, "bin")
 }
-func bin(name string) string { return filepath.Join(binDir(), name) }
+
+func bin(name string) string {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(binDir(), name)
+}
+
 func toolVersion(ctx context.Context, binPath string) string {
 	out, err := exec.CommandContext(ctx, goCmd, "version", "-m", binPath).Output() //nolint:gosec // fixed binary path
 	if err != nil {
@@ -150,6 +159,46 @@ func Upgrade(ctx context.Context) error {
 	if err != nil {
 		fmt.Fprint(os.Stderr, buf.String())
 		return fmt.Errorf("upgrade: %w", err)
+	}
+	return nil
+}
+
+type scaffold struct {
+	path string
+	data []byte
+}
+
+func writeIfAbsent(item scaffold) (bool, error) {
+	_, err := os.Stat(item.path)
+	if err == nil {
+		return false, nil
+	}
+	mkErr := os.MkdirAll(filepath.Dir(item.path), dirPerm)
+	if mkErr != nil {
+		return false, fmt.Errorf("mkdir %s: %w", item.path, mkErr)
+	}
+	wErr := os.WriteFile(item.path, item.data, configMode)
+	if wErr != nil {
+		return false, fmt.Errorf("write %s: %w", item.path, wErr)
+	}
+	return true, nil
+}
+
+func Init() error {
+	items := []scaffold{
+		{path: ".editorconfig", data: config.EditorConfig},
+		{path: filepath.Join(".github", "workflows", "ci.yml"), data: config.ConsumerCI},
+	}
+	for _, item := range items {
+		wrote, err := writeIfAbsent(item)
+		if err != nil {
+			return err
+		}
+		status := "exists "
+		if wrote {
+			status = "created"
+		}
+		fmt.Fprintf(os.Stderr, "%s %s\n", status, item.path)
 	}
 	return nil
 }

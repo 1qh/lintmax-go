@@ -14,6 +14,7 @@ const usage = `lintmax-go — maximum-strictness Go quality gate (always-latest,
 usage:
   lintmax fix       format + autofix + full fast gate
   lintmax check     verify only, no writes (CI mode)
+  lintmax init      scaffold .editorconfig + CI workflow into this project
   lintmax update    reinstall every linter tool @latest
   lintmax upgrade   reinstall lintmax-go itself @latest
   lintmax version   print lintmax-go's version
@@ -46,22 +47,32 @@ func realMain(args []string) int {
 		return report(run.EnsureLatest(ctx, true, true))
 	case "upgrade":
 		return report(run.Upgrade(ctx))
+	case "init":
+		return report(run.Init())
 	case "rules":
-		err := run.EnsureLatest(ctx, false, inCI)
-		if err != nil {
-			return report(err)
-		}
-		return report(run.Rules(ctx))
+		return rulesCmd(ctx, inCI)
 	case "fix", "check":
-		err := run.EnsureLatest(ctx, deep, inCI)
-		if err != nil {
-			return report(err)
-		}
-		return report(run.Gate(ctx, args[0] == "fix", deep))
+		return gateCmd(ctx, args[0] == "fix", deep, inCI)
 	default:
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
+}
+
+func rulesCmd(ctx context.Context, inCI bool) int {
+	err := run.EnsureLatest(ctx, false, inCI)
+	if err != nil {
+		return report(err)
+	}
+	return report(run.Rules(ctx))
+}
+
+func gateCmd(ctx context.Context, fix, deep, inCI bool) int {
+	err := run.EnsureLatest(ctx, deep, inCI)
+	if err != nil {
+		return report(err)
+	}
+	return report(run.Gate(ctx, fix, deep))
 }
 
 func report(err error) int {
