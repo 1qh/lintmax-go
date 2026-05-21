@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/1qh/lintmax-go/internal/config"
+	"github.com/1qh/lintmax-go/internal/diag"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
 	"github.com/1qh/lintmax-go/internal/transform"
@@ -27,15 +28,7 @@ const (
 	refreshTTL = 24 * time.Hour
 )
 
-var (
-	ErrGate  = errors.New("gate failed")
-	ErrDirty = errors.New("comments/blank-lines present (run fix)")
-)
-
-type step struct {
-	run  func(context.Context) error
-	name string
-}
+var ErrGate = errors.New("gate failed")
 
 func binDir() string {
 	if v := os.Getenv("GOBIN"); v != emptyArg {
@@ -139,16 +132,28 @@ func writeConfig() (string, error) {
 	return path, nil
 }
 
-func sh(ctx context.Context, name string, args ...string) error {
+func runOut(ctx context.Context, name string, args ...string) ([]byte, bool) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // fixed tool invocations
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	return out.Bytes(), err == nil
+}
+
+func runCombined(ctx context.Context, name string, args ...string) ([]byte, bool) {
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // fixed tool invocations
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()
-	if err != nil {
-		fmt.Fprint(os.Stderr, buf.String())
-		return fmt.Errorf("%s: %w", name, err)
+	return buf.Bytes(), err == nil
+}
+
+func tailLines(data []byte, count int) string {
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > count {
+		lines = lines[len(lines)-count:]
 	}
-	return nil
+	return strings.Join(lines, "\n")
 }
 
 func Upgrade(ctx context.Context) error {
@@ -217,62 +222,76 @@ func Rules(ctx context.Context) error {
 	return nil
 }
 
-func transformStep(fix bool) step {
-	return step{
-		name: "comments+compact",
-		run: func(_ context.Context) error {
-			if fix {
-				_, err := transform.Apply(".")
-				if err != nil {
-					return fmt.Errorf("transform: %w", err)
-				}
-				return nil
-			}
-			changed, err := transform.Check(".")
-			if err != nil {
-				return fmt.Errorf("transform: %w", err)
-			}
-			if len(changed) > 0 {
-				return fmt.Errorf("%w: %s", ErrDirty, strings.Join(changed, ", "))
-			}
-			return nil
-		},
+func transformGate(fix bool) ([]string, error) {
+	if fix {
+		_, err := transform.Apply(".")
+		if err != nil {
+			return nil, fmt.Errorf("transform: %w", err)
+		}
+		return nil, nil
 	}
+	changed, err := transform.Check(".")
+	if err != nil {
+		return nil, fmt.Errorf("transform: %w", err)
+	}
+	return changed, nil
 }
 
-func steps(cfg string, fix, deep bool) []step {
-	golangciArgs := []string{"run", "--config", cfg}
+func deepScan(ctx context.Context) []string {
+	var notes []string
+	specs := []struct {
+		name string
+		args []string
+	}{
+		{name: "govulncheck", args: []string{"./..."}},
+		{name: "osv-scanner", args: []string{"scan", "source", "-r", "."}},
+		{name: "capslock", args: []string{"-packages", "./..."}},
+	}
+	for _, spec := range specs {
+		out, ok := runCombined(ctx, bin(spec.name), spec.args...)
+		if !ok {
+			notes = append(notes, spec.name+":\n"+tailLines(out, 15))
+		}
+	}
+	return notes
+}
+
+func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
+	var diags []diag.Diagnostic
+	var notes []string
+	gcArgs := []string{"run", "--config", cfg, "--output.json.path=stdout", "--output.text.path=" + os.DevNull}
 	if fix {
-		golangciArgs = append(golangciArgs, "--fix")
+		gcArgs = append(gcArgs, "--fix")
 	}
-	out := []step{
-		transformStep(fix),
-		{
-			name: "golangci-lint",
-			run:  func(c context.Context) error { return sh(c, bin("golangci-lint"), golangciArgs...) },
-		},
-		{name: "nilaway", run: func(c context.Context) error { return sh(c, bin("nilaway"), "./...") }},
-		{name: "deadcode", run: func(c context.Context) error { return sh(c, bin("deadcode"), "-test", "./...") }},
-		{
-			name: "go test -race",
-			run:  func(c context.Context) error { return sh(c, goCmd, "test", "-race", "-shuffle=on", "./...") },
-		},
+	gcOut, gcOK := runOut(ctx, bin("golangci-lint"), gcArgs...)
+	gcDiags := diag.ParseGolangci(gcOut)
+	diags = append(diags, gcDiags...)
+	if !gcOK && len(gcDiags) == 0 {
+		notes = append(notes, "golangci-lint:\n"+tailLines(gcOut, 15))
 	}
-	if deep {
-		out = append(
-			out,
-			step{name: "govulncheck", run: func(c context.Context) error { return sh(c, bin("govulncheck"), "./...") }},
-			step{
-				name: "osv-scanner",
-				run:  func(c context.Context) error { return sh(c, bin("osv-scanner"), "scan", "source", "-r", ".") },
-			},
-			step{
-				name: "capslock",
-				run:  func(c context.Context) error { return sh(c, bin("capslock"), "-packages", "./...") },
-			},
-		)
+	nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
+	diags = append(diags, diag.ParseAnalysis(nilOut, "nilaway")...)
+	dcOut, dcOK := runCombined(ctx, bin("deadcode"), "-test", "./...")
+	if !dcOK {
+		diags = append(diags, diag.ParseLines(dcOut, "deadcode")...)
 	}
-	return out
+	return diags, notes
+}
+
+func report(diags []diag.Diagnostic, notes []string) error {
+	root, gwErr := os.Getwd()
+	if gwErr != nil {
+		root = "."
+	}
+	out := diag.Format(diags, root)
+	if out == "" && len(notes) == 0 {
+		return nil
+	}
+	fmt.Fprint(os.Stderr, out)
+	for _, note := range notes {
+		fmt.Fprintln(os.Stderr, note)
+	}
+	return fmt.Errorf("%w: %d", ErrGate, diag.Count(diags)+len(notes))
 }
 
 func Gate(ctx context.Context, fix, deep bool) error {
@@ -280,15 +299,20 @@ func Gate(ctx context.Context, fix, deep bool) error {
 	if err != nil {
 		return err
 	}
-	var failed []string
-	for _, s := range steps(cfg, fix, deep) {
-		runErr := s.run(ctx)
-		if runErr != nil {
-			failed = append(failed, s.name)
-		}
+	changed, terr := transformGate(fix)
+	if terr != nil {
+		return terr
 	}
-	if len(failed) > 0 {
-		return fmt.Errorf("%w: %s", ErrGate, strings.Join(failed, ", "))
+	diags, notes := collect(ctx, cfg, fix)
+	if len(changed) > 0 {
+		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
-	return nil
+	testOut, testOK := runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+	if !testOK {
+		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
+	}
+	if deep {
+		notes = append(notes, deepScan(ctx)...)
+	}
+	return report(diags, notes)
 }

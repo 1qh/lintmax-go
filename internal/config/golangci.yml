@@ -26,6 +26,8 @@ linters:
     - gomodguard        # deprecated v2.12.0; superseded by gomodguard_v2 (in default:all)
     - testpackage       # no lintmax/eslint equivalent; forces black-box-only, can't test unexported entrypoints
     - exhaustruct       # opt-out is //exhaustruct:optional comments, which comment-strip deletes — incompatible with the comment-strip philosophy
+    - tagliatelle       # systematically fights structs mirroring external JSON (vendor/API response shapes dictate tag case); no lintmax equivalent
+    - varnamelen        # parity: lintmax disables id-length; fights idiomatic Go short names (i, r, w, c, k, v, ok); most-disabled linter in the ecosystem
   settings:
     errcheck:
       check-type-assertions: true
@@ -48,6 +50,9 @@ linters:
         - -ST1000  # EARNED: comment-strip removes package comments; rule demands them
     gocritic:
       enable-all: true
+      # unnamedResult demands named multi-returns; conflicts with nonamedreturns (bans them). Keep unnamed.
+      disabled-checks:
+        - unnamedResult
     gosec:
       severity: low
       confidence: low
