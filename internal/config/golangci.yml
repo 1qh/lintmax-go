@@ -50,6 +50,9 @@ linters:
       checks:
         - all
         - -ST1000  # EARNED: comment-strip removes package comments; rule demands them
+    lll:
+      # EARNED: align lll with golines/revive width (123); default 120 conflicts with the formatter.
+      line-length: 123
     gocritic:
       enable-all: true
       # unnamedResult demands named multi-returns; conflicts with nonamedreturns (bans them). Keep unnamed.
