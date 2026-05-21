@@ -16,7 +16,8 @@ No linter version is ever pinned. Every tool is fetched `@latest` on each run, a
 
 ```
 go install github.com/1qh/lintmax-go@latest   # Go users
-# or, prebuilt binary (no Go required):
+brew install 1qh/tap/lintmax-go               # macOS / Linux
+# or prebuilt binary (no Go, no brew):
 curl -fsSL https://raw.githubusercontent.com/1qh/lintmax-go/main/install.sh | sh
 ```
 
