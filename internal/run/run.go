@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/state"
@@ -21,6 +22,7 @@ const (
 	emptyArg   = ""
 	goCmd      = "go"
 	configMode = 0o600
+	refreshTTL = 24 * time.Hour
 )
 
 var (
@@ -63,7 +65,7 @@ func toolVersion(ctx context.Context, binPath string) string {
 
 func reportBumps(ctx context.Context, installed []tools.Tool) {
 	prev := state.Load()
-	next := state.State{Versions: map[string]string{}}
+	next := state.State{Versions: map[string]string{}, LastCheck: time.Time{}}
 	for _, tool := range installed {
 		ver := toolVersion(ctx, bin(tool.Name))
 		next.Versions[tool.Name] = ver
@@ -72,13 +74,30 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver)
 		}
 	}
+	next.LastCheck = time.Now()
 	saveErr := next.Save()
 	if saveErr != nil {
 		fmt.Fprintln(os.Stderr, "lintmax-go: version cache:", saveErr)
 	}
 }
 
-func EnsureLatest(ctx context.Context, includeDeep bool) error {
+func toolsPresent(includeDeep bool) bool {
+	for _, tool := range tools.All {
+		if tool.Deep && !includeDeep {
+			continue
+		}
+		_, err := os.Stat(bin(tool.Name))
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func EnsureLatest(ctx context.Context, includeDeep, force bool) error {
+	if !force && state.Load().Fresh(refreshTTL) && toolsPresent(includeDeep) {
+		return nil
+	}
 	var installed []tools.Tool
 	for _, tool := range tools.All {
 		if tool.Deep && !includeDeep {

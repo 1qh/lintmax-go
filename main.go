@@ -36,23 +36,24 @@ func realMain(args []string) int {
 		return exitUsage
 	}
 	deep := slices.Contains(args[1:], "--deep")
+	inCI := os.Getenv("CI") != ""
 	ctx := context.Background()
 	switch args[0] {
 	case "version":
 		fmt.Fprintln(os.Stdout, version.Current())
 		return exitOK
 	case "update":
-		return report(run.EnsureLatest(ctx, true))
+		return report(run.EnsureLatest(ctx, true, true))
 	case "upgrade":
 		return report(run.Upgrade(ctx))
 	case "rules":
-		err := run.EnsureLatest(ctx, false)
+		err := run.EnsureLatest(ctx, false, inCI)
 		if err != nil {
 			return report(err)
 		}
 		return report(run.Rules(ctx))
 	case "fix", "check":
-		err := run.EnsureLatest(ctx, deep)
+		err := run.EnsureLatest(ctx, deep, inCI)
 		if err != nil {
 			return report(err)
 		}

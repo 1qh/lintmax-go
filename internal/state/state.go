@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -15,7 +16,12 @@ const (
 )
 
 type State struct {
-	Versions map[string]string `json:"versions"`
+	Versions  map[string]string `json:"versions"`
+	LastCheck time.Time         `json:"lastCheck"`
+}
+
+func (s State) Fresh(ttl time.Duration) bool {
+	return !s.LastCheck.IsZero() && time.Since(s.LastCheck) < ttl
 }
 
 func path() (string, error) {
@@ -27,7 +33,7 @@ func path() (string, error) {
 }
 
 func Load() State {
-	empty := State{Versions: map[string]string{}}
+	empty := State{Versions: map[string]string{}, LastCheck: time.Time{}}
 	p, err := path()
 	if err != nil {
 		return empty
