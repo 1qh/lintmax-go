@@ -13,7 +13,8 @@ case "$arch" in
 esac
 tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | grep -m1 '"tag_name"' | cut -d'"' -f4)
 [ -n "$tag" ] || { echo "could not resolve latest release" >&2; exit 1; }
-url="https://github.com/$repo/releases/download/$tag/lintmax-go_${os}_${arch}.tar.gz"
+ver=${tag#v}
+url="https://github.com/$repo/releases/download/$tag/lintmax-go_${ver}_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
 echo "downloading lintmax-go $tag ($os/$arch)…"
 curl -fsSL "$url" | tar -xz -C "$tmp"
