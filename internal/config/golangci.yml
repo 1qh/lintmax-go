@@ -30,6 +30,7 @@ linters:
     - varnamelen        # parity: lintmax disables id-length; fights idiomatic Go short names (i, r, w, c, k, v, ok); most-disabled linter in the ecosystem
     - goconst           # flags repeated API/path-segment strings (list/get/create across many tools); they are the surface, not magic constants; no lintmax equivalent
     - funlen            # parity: lintmax disables max-lines-per-function; line-count limit (complexity still bounded by cyclomatic, which stays on)
+    - paralleltest      # EARNED: forces t.Parallel() on every test/subtest; harmful for stateful/integration tests sharing a DB; no lintmax/eslint equivalent
   settings:
     errcheck:
       check-type-assertions: true
