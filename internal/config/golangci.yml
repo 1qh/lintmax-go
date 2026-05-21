@@ -86,6 +86,9 @@ linters:
         # EARNED: no lintmax/eslint equivalent; bool mode params are idiomatic Go CLI orchestration.
         - name: flag-parameter
           disabled: true
+        # EARNED: conflicts with nonamedreturns (wants named, the other bans); keep unnamed-return regime.
+        - name: confusing-results
+          disabled: true
         # EARNED: arbitrary cap (default 5), absurd for a types/wire file; no lintmax equivalent.
         - name: max-public-structs
           disabled: true
