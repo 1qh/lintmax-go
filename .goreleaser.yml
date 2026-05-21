@@ -16,7 +16,7 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
-brews:
+homebrew_casks:
   - name: lintmax-go
     repository:
       owner: 1qh
@@ -24,7 +24,12 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/1qh/lintmax-go
     description: Maximum-strictness Go quality gate. Always-latest, never stale.
-    license: MIT
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/lintmax-go"]
+          end
 release:
   github:
     owner: 1qh
