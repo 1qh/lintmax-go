@@ -285,6 +285,7 @@ func report(diags []diag.Diagnostic, notes []string) error {
 	}
 	out := diag.Format(diags, root)
 	if out == "" && len(notes) == 0 {
+		fmt.Fprintln(os.Stdout, "ok")
 		return nil
 	}
 	fmt.Fprint(os.Stderr, out)

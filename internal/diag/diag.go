@@ -125,17 +125,22 @@ func splitPosn(posn string) (string, int) {
 	return parts[0], num
 }
 
-func relpath(root, file string) string {
-	rootAbs, err1 := filepath.EvalSymlinks(root)
-	fileAbs, err2 := filepath.EvalSymlinks(file)
-	if err1 == nil && err2 == nil {
-		rel, err := filepath.Rel(rootAbs, fileAbs)
-		if err == nil && !strings.HasPrefix(rel, "..") {
-			return rel
-		}
+func resolvePath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
 	}
-	if !filepath.IsAbs(file) {
-		return file
+	ev, evErr := filepath.EvalSymlinks(abs)
+	if evErr == nil {
+		return ev
+	}
+	return abs
+}
+
+func relpath(root, file string) string {
+	rel, err := filepath.Rel(resolvePath(root), resolvePath(file))
+	if err == nil && !strings.HasPrefix(rel, "..") {
+		return rel
 	}
 	return filepath.Base(file)
 }
