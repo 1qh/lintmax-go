@@ -16,6 +16,15 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+brews:
+  - name: lintmax-go
+    repository:
+      owner: 1qh
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/1qh/lintmax-go
+    description: Maximum-strictness Go quality gate. Always-latest, never stale.
+    license: MIT
 release:
   github:
     owner: 1qh
