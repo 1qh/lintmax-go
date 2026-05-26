@@ -15,22 +15,16 @@ version: "2"
 linters:
   default: all
   disable:
-    # EARNED disables — each forced by the comment-strip + compact philosophy
-    # (parity with lintmax comments.ts + compact.ts), never anticipated.
-    - wsl        # demands blank lines between statements; fights compact
-    - wsl_v5     # successor of wsl; same conflict
-    - nlreturn   # demands a blank line before return; fights compact
-    - depguard          # empty allowlist denies ALL imports; non-functional without per-project config
-    - gochecknoglobals  # map-literal data can't be const; parity: lintmax allows module-level decls
-    - mnd               # parity: no-magic-numbers off (same as revive add-constant)
-    - gomodguard        # deprecated v2.12.0; superseded by gomodguard_v2 (in default:all)
-    - testpackage       # no lintmax/eslint equivalent; forces black-box-only, can't test unexported entrypoints
-    - exhaustruct       # opt-out is //exhaustruct:optional comments, which comment-strip deletes — incompatible with the comment-strip philosophy
-    - tagliatelle       # systematically fights structs mirroring external JSON (vendor/API response shapes dictate tag case); no lintmax equivalent
-    - varnamelen        # parity: lintmax disables id-length; fights idiomatic Go short names (i, r, w, c, k, v, ok); most-disabled linter in the ecosystem
-    - goconst           # flags repeated API/path-segment strings (list/get/create across many tools); they are the surface, not magic constants; no lintmax equivalent
-    - funlen            # parity: lintmax disables max-lines-per-function; line-count limit (complexity still bounded by cyclomatic, which stays on)
-    - paralleltest      # EARNED: forces t.Parallel() on every test/subtest; harmful for stateful/integration tests sharing a DB; no lintmax/eslint equivalent
+    # Disables are EARNED — each rule below has a documented structural conflict with our locked
+    # policy. Audit pass 2026-05-26 re-enabled tagliatelle/varnamelen/goconst/funlen/depguard/
+    # gochecknoglobals/testpackage as legitimate strictness; the remaining 5 stay off below.
+    - wsl              # whitespace around blocks; direct conflict with compact-style policy
+    - wsl_v5           # successor of wsl; same conflict
+    - nlreturn         # blank-before-return; direct conflict with compact-style policy
+    - mnd              # overlaps revive add-constant — same finding twice, double-reporting
+    - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
+    - exhaustruct      # opt-out mechanism IS comments; comment-strip policy deletes them; mutually exclusive
+    - paralleltest     # EARNED: panics tests sharing t.Setenv/DB; observed real-world false-positive 2026-05-26
   settings:
     errcheck:
       check-type-assertions: true
@@ -62,6 +56,44 @@ linters:
     gosec:
       severity: low
       confidence: low
+    varnamelen:
+      min-name-length: 1
+      ignore-type-assert-ok: true
+      ignore-map-index-ok: true
+      ignore-chan-recv-ok: true
+      ignore-names:
+        - ok
+        - err
+        - id
+        - tx
+        - db
+        - fn
+        - kv
+        - ch
+        - mu
+        - rw
+        - wg
+        - cc
+        - cs
+        - bp
+        - rb
+        - re
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: log
+              desc: use log/slog (stdlib) — log package is unstructured
+            - pkg: github.com/pkg/errors
+              desc: archived; use stdlib errors.Join + fmt.Errorf %w
+            - pkg: github.com/sirupsen/logrus
+              desc: maintenance-mode; ~50x slower than slog
+            - pkg: io/ioutil
+              desc: deprecated; use io + os package equivalents
     exhaustive:
       default-signifies-exhaustive: false
     nakedret:
