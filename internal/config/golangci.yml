@@ -85,15 +85,26 @@ linters:
     depguard:
       rules:
         main:
+          # depguard prefix-matches Pkg, so a bare `log` deny also bans `log/slog`.
+          # Unstructured `log` usage is enforced via forbidigo on call sites (below);
+          # third-party packages with no namespace collision stay here.
           deny:
-            - pkg: log
-              desc: use log/slog (stdlib) — log package is unstructured
             - pkg: github.com/pkg/errors
               desc: archived; use stdlib errors.Join + fmt.Errorf %w
             - pkg: github.com/sirupsen/logrus
               desc: maintenance-mode; ~50x slower than slog
             - pkg: io/ioutil
               desc: deprecated; use io + os package equivalents
+    forbidigo:
+      # Ban unstructured log.* call sites. depguard cannot reach this (prefix-match
+      # bug on `log` vs `log/slog`); forbidigo targets the actual usage.
+      forbid:
+        - pattern: '^log\.(Print|Println|Printf|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln|Default|SetFlags|SetOutput|SetPrefix|New|Logger)$'
+          msg: use log/slog (the unstructured log package is banned)
+        - pattern: '^fmt\.Print(|f|ln)$'
+          msg: use slog or stderr writer; bare fmt.Print writes to stdout and pollutes agent-first NDJSON
+      exclude-godoc-examples: true
+      analyze-types: true
     exhaustive:
       default-signifies-exhaustive: false
     nakedret:
