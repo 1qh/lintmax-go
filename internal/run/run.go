@@ -472,7 +472,7 @@ func testConcurrency(noRace bool) int {
 		return runtime.NumCPU()
 	}
 	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel collect phase
-	if n < 2 {                //nolint:mnd
+	if n < 2 {                //nolint:mnd // minimum useful parallelism
 		return 2
 	}
 	return n
