@@ -399,7 +399,6 @@ func (g *gateCtx) runGate() error {
 	if len(changed) > 0 {
 		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
-	notes = appendStaleness(g.ctx, g.timing, notes)
 	if g.deep {
 		deepNotes := timePhase3(g.timing, "deepScan", func() []string { return deepScan(g.ctx) })
 		notes = append(notes, deepNotes...)
@@ -414,6 +413,8 @@ func (g *gateCtx) runGate() error {
 func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var diags []diag.Diagnostic
 	var notes []string
+	var stale []staleness.Issue
+	var staleErr error
 	var testOut []byte
 	testOK := true
 	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1"
@@ -421,6 +422,11 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
 			return collect(g.ctx, g.cfg, g.fix, g.deep)
+		})
+	})
+	topWG.Go(func() {
+		stale, staleErr = timePhase(g.timing, "staleness", func() ([]staleness.Issue, error) {
+			return staleness.Scan(g.ctx, ".")
 		})
 	})
 	if !skipTest {
@@ -434,20 +440,13 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
 	}
-	return diags, notes
-}
-
-func appendStaleness(ctx context.Context, timing bool, notes []string) []string {
-	stale, sErr := timePhase(timing, "staleness", func() ([]staleness.Issue, error) {
-		return staleness.Scan(ctx, ".")
-	})
-	if sErr != nil {
-		notes = append(notes, "staleness scan: "+sErr.Error())
+	if staleErr != nil {
+		notes = append(notes, "staleness scan: "+staleErr.Error())
 	}
 	if rendered := staleness.Format(stale); rendered != "" {
 		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
-	return notes
+	return diags, notes
 }
 
 func testArgs() []string {
