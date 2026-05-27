@@ -14,6 +14,7 @@ import (
 
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/diag"
+	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
 	"github.com/1qh/lintmax-go/internal/transform"
@@ -311,6 +312,13 @@ func Gate(ctx context.Context, fix, deep bool) error {
 	testOut, testOK := runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
+	}
+	stale, sErr := staleness.Scan(ctx, ".")
+	if sErr != nil {
+		notes = append(notes, "staleness scan: "+sErr.Error())
+	}
+	if rendered := staleness.Format(stale); rendered != "" {
+		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
 	if deep {
 		notes = append(notes, deepScan(ctx)...)

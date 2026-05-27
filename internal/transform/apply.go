@@ -11,6 +11,7 @@ import (
 
 const goExt = ".go"
 
+//nolint:gochecknoglobals // pkg-data: walk-skip set
 var skipDirs = map[string]bool{".git": true, "vendor": true, "testdata": true, "node_modules": true}
 
 func walkGo(root string) ([]string, error) {

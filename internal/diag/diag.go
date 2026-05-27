@@ -27,17 +27,20 @@ func canonical(linter, rule string) string {
 	return linter + "/" + rule
 }
 
+//nolint:tagliatelle // golangci-lint JSON output uses PascalCase keys (upstream wire shape)
 type golangciPos struct {
 	Filename string `json:"Filename"`
 	Line     int    `json:"Line"`
 }
 
+//nolint:tagliatelle // golangci-lint JSON output uses PascalCase keys (upstream wire shape)
 type golangciIssue struct {
 	FromLinter string      `json:"FromLinter"`
 	Text       string      `json:"Text"`
 	Pos        golangciPos `json:"Pos"`
 }
 
+//nolint:tagliatelle // golangci-lint JSON output uses PascalCase keys (upstream wire shape)
 type golangciOut struct {
 	Issues []golangciIssue `json:"Issues"`
 }
