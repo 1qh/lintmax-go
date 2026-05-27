@@ -18,8 +18,8 @@ var All = []Tool{
 	{
 		Name: "nilaway",
 		Pkg:  "go.uber.org/nilaway/cmd/nilaway",
-		Why:  "nil-panic static analysis (TS-strict-null gap)",
-		Deep: false,
+		Why:  "nil-panic static analysis (TS-strict-null gap); --deep only since v0.18.0",
+		Deep: true,
 	},
 	{
 		Name: "deadcode",
