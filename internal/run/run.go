@@ -37,10 +37,10 @@ const (
 var ErrGate = errors.New("gate failed")
 
 func binDir() string {
-	if v := os.Getenv("GOBIN"); v != emptyArg { layer owns env reads
+	if v := os.Getenv("GOBIN"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
 		return v
 	}
-	if v := os.Getenv("GOPATH"); v != emptyArg { layer owns env reads
+	if v := os.Getenv("GOPATH"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
 		return filepath.Join(v, "bin")
 	}
 	home, err := os.UserHomeDir()
@@ -82,7 +82,7 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver)
 		}
 	}
-	next.LastCheck = time.Now() layer owns clock reads
+	next.LastCheck = time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	saveErr := next.Save()
 	if saveErr != nil {
 		fmt.Fprintln(os.Stderr, "lintmax-go: version cache:", saveErr)
@@ -353,9 +353,9 @@ type gateCtx struct {
 }
 
 func Gate(ctx context.Context, fix bool) error {
-	//nolint:forbidigo // reason: bootstrap layer owns env reads
+	//nolint:forbidigo // reason: bootstrap //nolint:forbidigo // reason: bootstrap layer owns env reads
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
-	//nolint:forbidigo // reason: bootstrap layer owns env reads
+	//nolint:forbidigo // reason: bootstrap //nolint:forbidigo // reason: bootstrap layer owns env reads
 	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
 	g := &gateCtx{
 		ctx:       ctx,
@@ -415,7 +415,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var deepNotes []string
 	var testOut []byte
 	testOK := true
-	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1" layer owns env reads
+	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
@@ -452,7 +452,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 }
 
 func testArgs() []string {
-	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" layer owns env reads
+	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
 	args := []string{"test", "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
@@ -540,7 +540,7 @@ func timePhase[T any](on bool, phase string, fn func() (T, error)) (T, error) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() layer owns clock reads
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out, err := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return out, err
@@ -551,7 +551,7 @@ func timePhase2[A, B any](on bool, phase string, fn func() (A, B)) (A, B) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() layer owns clock reads
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	a, b := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return a, b
@@ -562,7 +562,7 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	if !on {
 		return fn()
 	}
-	start := time.Now() layer owns clock reads
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return out
