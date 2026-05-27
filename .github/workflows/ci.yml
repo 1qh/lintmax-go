@@ -9,6 +9,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: shellcheck install.sh + any future shell scripts
+        run: shellcheck install.sh
   dogfood:
     runs-on: ubuntu-latest
     steps:
