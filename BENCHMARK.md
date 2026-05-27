@@ -5,6 +5,7 @@ incl. clickhouse-go/v2, excelize/v2, genai, otel/sdk).
 
 | Mode | Wall | Notes |
 |---|---|---|
+| check (re-run no source change) | **14ms** | tree-hash cache hit — `ok (cached)` |
 | check (warm) | **8.6s** | collect 6.4s + test 8.2s overlap, staleness 0.2s |
 | check (cold) | **75s** | go-build + golangci cache wiped |
 | check --deep | 2:37 | adds nilaway + govulncheck + osv-scanner + capslock |
@@ -30,6 +31,17 @@ collect + test overlap via WaitGroup — wall = max, not sum.
 | + nilaway → --deep only | 12.7s | nilaway = 18.7s isolated; govet nilness covers baseline |
 | + collect+test concurrent | 8.7s | share go-build cache |
 | + staleness HTTP parallel | 8.6s | per-action GH API call concurrent |
+| + tree-hash cache (re-run unchanged) | **14ms** | sha256 over .go/.mod/.sum + lintmax version; skip all phases on hit |
+
+## Tree-hash cache
+
+`Gate` first computes `sha256` over every `.go`/`.mod`/`.sum` file plus
+`lintmax-go` version, looks it up in `~/Library/Caches/lintmax-go/versions.json`
+(keyed by cwd). On hit: skip everything, print `ok (cached)`. On success of a
+real run: persist the hash. Invalidated automatically when lintmax-go upgrades
+(version is part of the hash).
+
+Bypass with `LINTMAX_NO_SKIP=1`. Disabled for `fix` and `--deep` modes.
 
 ## Ideas tried + rejected
 

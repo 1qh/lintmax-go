@@ -3,8 +3,11 @@ package run
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -325,38 +328,97 @@ func report(diags []diag.Diagnostic, notes []string) error {
 	return fmt.Errorf("%w: %d", ErrGate, diag.Count(diags)+len(notes))
 }
 
+type gateCtx struct {
+	ctx       context.Context //nolint:containedctx // gate stage struct intentionally bundles ctx
+	timing    bool
+	fix       bool
+	deep      bool
+	cfg       string
+	skipCheck bool
+	greenKey  string
+}
+
 func Gate(ctx context.Context, fix, deep bool) error {
-	timing := os.Getenv("LINTMAX_TIMING") == "1"
-	cfg, err := timePhase(timing, "writeConfig", writeConfig)
+	g := &gateCtx{
+		ctx:       ctx,
+		timing:    os.Getenv("LINTMAX_TIMING") == "1",
+		fix:       fix,
+		deep:      deep,
+		skipCheck: !fix && !deep && os.Getenv("LINTMAX_NO_SKIP") != "1",
+	}
+	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
+	if g.tryCached() {
+		return nil
+	}
+	cfg, err := timePhase(g.timing, "writeConfig", writeConfig)
 	if err != nil {
 		return err
 	}
-	changed, terr := timePhase(timing, "transform", func() ([]string, error) { return transformGate(fix) })
+	g.cfg = cfg
+	return g.runGate()
+}
+
+func (g *gateCtx) tryCached() bool {
+	if !g.skipCheck || g.greenKey == "" {
+		return false
+	}
+	prev := state.Load()
+	cwd, cwErr := os.Getwd()
+	if cwErr != nil || cwd == "" {
+		return false
+	}
+	if prev.LastGreenByCWD[cwd] != g.greenKey {
+		return false
+	}
+	fmt.Fprintln(os.Stdout, "ok (cached)")
+	return true
+}
+
+func (g *gateCtx) runGate() error {
+	changed, terr := timePhase(g.timing, "transform", func() ([]string, error) { return transformGate(g.fix) })
 	if terr != nil {
 		return terr
 	}
+	diags, notes := g.runParallel()
+	if len(changed) > 0 {
+		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
+	}
+	notes = appendStaleness(g.ctx, g.timing, notes)
+	if g.deep {
+		deepNotes := timePhase3(g.timing, "deepScan", func() []string { return deepScan(g.ctx) })
+		notes = append(notes, deepNotes...)
+	}
+	err := report(diags, notes)
+	if err == nil && g.skipCheck && g.greenKey != "" {
+		persistGreen(g.greenKey)
+	}
+	return err
+}
+
+func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var diags []diag.Diagnostic
 	var notes []string
 	var testOut []byte
 	var testOK bool
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
-		diags, notes = timePhase2(timing, "collect", func() ([]diag.Diagnostic, []string) {
-			return collect(ctx, cfg, fix, deep)
+		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
+			return collect(g.ctx, g.cfg, g.fix, g.deep)
 		})
 	})
 	topWG.Go(func() {
-		testOut, testOK = timePhase2(timing, "test", func() ([]byte, bool) {
-			return runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+		testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
+			return runCombined(g.ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
 		})
 	})
 	topWG.Wait()
-	if len(changed) > 0 {
-		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
-	}
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
 	}
+	return diags, notes
+}
+
+func appendStaleness(ctx context.Context, timing bool, notes []string) []string {
 	stale, sErr := timePhase(timing, "staleness", func() ([]staleness.Issue, error) {
 		return staleness.Scan(ctx, ".")
 	})
@@ -366,11 +428,63 @@ func Gate(ctx context.Context, fix, deep bool) error {
 	if rendered := staleness.Format(stale); rendered != "" {
 		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
-	if deep {
-		deepNotes := timePhase3(timing, "deepScan", func() []string { return deepScan(ctx) })
-		notes = append(notes, deepNotes...)
+	return notes
+}
+
+func persistGreen(key string) {
+	cwd, cwErr := os.Getwd()
+	if cwErr != nil {
+		return
 	}
-	return report(diags, notes)
+	st := state.Load()
+	st.LastGreenByCWD[cwd] = key
+	_ = st.Save() //nolint:errcheck // best-effort cache
+}
+
+func computeTreeHash() string {
+	h := sha256.New()
+	hashWrite(h, "lintmax-go:"+version.Current()+"\n")
+	walkErr := filepath.Walk(".", treeWalker(h))
+	if walkErr != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func treeWalker(h hash.Hash) filepath.WalkFunc {
+	return func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // best-effort walk; unreadable files skipped
+		}
+		if info.IsDir() {
+			return skipNoise(info.Name())
+		}
+		if !relevantHashFile(path) {
+			return nil
+		}
+		body, rErr := os.ReadFile(path) //nolint:gosec // local repo walk
+		if rErr != nil {
+			return nil //nolint:nilerr // skip unreadable
+		}
+		digest := sha256.Sum256(body)
+		hashWrite(h, path+":"+hex.EncodeToString(digest[:])+"\n")
+		return nil
+	}
+}
+
+func skipNoise(name string) error {
+	if name == ".git" || name == "vendor" || name == "node_modules" || name == "dist" {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+func relevantHashFile(path string) bool {
+	return strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".mod") || strings.HasSuffix(path, ".sum")
+}
+
+func hashWrite(h hash.Hash, s string) {
+	_, _ = h.Write([]byte(s))
 }
 
 //nolint:ireturn // generic timing wrapper; T is whatever callee returns

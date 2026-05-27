@@ -16,8 +16,9 @@ const (
 )
 
 type State struct {
-	Versions  map[string]string `json:"versions"`
-	LastCheck time.Time         `json:"lastCheck"`
+	Versions       map[string]string `json:"versions"`
+	LastCheck      time.Time         `json:"lastCheck"`
+	LastGreenByCWD map[string]string `json:"lastGreenByCwd"`
 }
 
 func (s State) Fresh(ttl time.Duration) bool {
@@ -33,7 +34,7 @@ func path() (string, error) {
 }
 
 func Load() State {
-	empty := State{Versions: map[string]string{}, LastCheck: time.Time{}}
+	empty := State{Versions: map[string]string{}, LastCheck: time.Time{}, LastGreenByCWD: map[string]string{}}
 	p, err := path()
 	if err != nil {
 		return empty
@@ -46,6 +47,9 @@ func Load() State {
 	err = json.Unmarshal(raw, &loaded)
 	if err != nil || loaded.Versions == nil {
 		return empty
+	}
+	if loaded.LastGreenByCWD == nil {
+		loaded.LastGreenByCWD = map[string]string{}
 	}
 	return loaded
 }
