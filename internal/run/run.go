@@ -260,7 +260,6 @@ func transformGate(fix bool) ([]string, error) {
 }
 
 func deepScan(ctx context.Context) []string {
-	var notes []string
 	specs := []struct {
 		name string
 		args []string
@@ -269,10 +268,21 @@ func deepScan(ctx context.Context) []string {
 		{name: "osv-scanner", args: []string{"scan", "source", "-r", "."}},
 		{name: "capslock", args: []string{"-packages", "./..."}},
 	}
-	for _, spec := range specs {
-		out, ok := runCombined(ctx, bin(spec.name), spec.args...)
-		if !ok {
-			notes = append(notes, spec.name+":\n"+tailLines(out, 15))
+	results := make([]string, len(specs))
+	var wg sync.WaitGroup
+	for idx, spec := range specs {
+		wg.Go(func() {
+			out, ok := runCombined(ctx, bin(spec.name), spec.args...)
+			if !ok {
+				results[idx] = spec.name + ":\n" + tailLines(out, 15)
+			}
+		})
+	}
+	wg.Wait()
+	var notes []string
+	for _, r := range results {
+		if r != "" {
+			notes = append(notes, r)
 		}
 	}
 	return notes
