@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/pprof"
 	"slices"
 
 	"github.com/1qh/lintmax-go/internal/run"
@@ -30,8 +31,26 @@ const (
 
 func main() { os.Exit(realMain(os.Args[1:])) }
 
+func maybeProfile() func() {
+	path := os.Getenv("LINTMAX_CPUPROFILE")
+	if path == "" {
+		return func() {}
+	}
+	f, err := os.Create(path) //nolint:gosec // user-supplied profile path
+	if err != nil {
+		return func() {}
+	}
+	_ = pprof.StartCPUProfile(f) //nolint:errcheck // best-effort profile
+	return func() {
+		pprof.StopCPUProfile()
+		_ = f.Close() //nolint:errcheck // close on shutdown non-actionable
+	}
+}
+
 //nolint:nilaway // os.Args is never nil in a running program
 func realMain(args []string) int {
+	stop := maybeProfile()
+	defer stop()
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
