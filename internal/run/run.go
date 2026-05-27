@@ -105,20 +105,36 @@ func EnsureLatest(ctx context.Context, includeDeep, force bool) error {
 	if !force && state.Load().Fresh(refreshTTL) && toolsPresent(includeDeep) {
 		return nil
 	}
-	var installed []tools.Tool
+	var (
+		mu        sync.Mutex
+		installed []tools.Tool
+		firstErr  error
+	)
+	var wg sync.WaitGroup
 	for _, tool := range tools.All {
 		if tool.Deep && !includeDeep {
 			continue
 		}
-		cmd := exec.CommandContext(ctx, goCmd, "install", tool.Pkg+"@latest") //nolint:gosec // static registry paths
-		var buf bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &buf, &buf
-		err := cmd.Run()
-		if err != nil {
-			fmt.Fprint(os.Stderr, buf.String())
-			return fmt.Errorf("install %s: %w", tool.Name, err)
-		}
-		installed = append(installed, tool)
+		wg.Go(func() {
+			cmd := exec.CommandContext(ctx, goCmd, "install", tool.Pkg+"@latest") //nolint:gosec // static registry paths
+			var buf bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &buf, &buf
+			err := cmd.Run()
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("install %s: %w", tool.Name, err)
+					fmt.Fprint(os.Stderr, buf.String())
+				}
+				return
+			}
+			installed = append(installed, tool)
+		})
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return firstErr
 	}
 	reportBumps(ctx, installed)
 	return nil
