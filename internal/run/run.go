@@ -297,23 +297,30 @@ func report(diags []diag.Diagnostic, notes []string) error {
 }
 
 func Gate(ctx context.Context, fix, deep bool) error {
-	cfg, err := writeConfig()
+	timing := os.Getenv("LINTMAX_TIMING") == "1"
+	cfg, err := timePhase(timing, "writeConfig", writeConfig)
 	if err != nil {
 		return err
 	}
-	changed, terr := transformGate(fix)
+	changed, terr := timePhase(timing, "transform", func() ([]string, error) { return transformGate(fix) })
 	if terr != nil {
 		return terr
 	}
-	diags, notes := collect(ctx, cfg, fix)
+	diags, notes := timePhase2(timing, "collect", func() ([]diag.Diagnostic, []string) {
+		return collect(ctx, cfg, fix)
+	})
 	if len(changed) > 0 {
 		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
-	testOut, testOK := runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+	testOut, testOK := timePhase2(timing, "test", func() ([]byte, bool) {
+		return runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+	})
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
 	}
-	stale, sErr := staleness.Scan(ctx, ".")
+	stale, sErr := timePhase(timing, "staleness", func() ([]staleness.Issue, error) {
+		return staleness.Scan(ctx, ".")
+	})
 	if sErr != nil {
 		notes = append(notes, "staleness scan: "+sErr.Error())
 	}
@@ -321,7 +328,41 @@ func Gate(ctx context.Context, fix, deep bool) error {
 		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
 	if deep {
-		notes = append(notes, deepScan(ctx)...)
+		deepNotes := timePhase3(timing, "deepScan", func() []string { return deepScan(ctx) })
+		notes = append(notes, deepNotes...)
 	}
 	return report(diags, notes)
+}
+
+//nolint:ireturn // generic timing wrapper; T is whatever callee returns
+func timePhase[T any](on bool, phase string, fn func() (T, error)) (T, error) {
+	if !on {
+		return fn()
+	}
+	start := time.Now()
+	out, err := fn()
+	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	return out, err
+}
+
+//nolint:ireturn // generic timing wrapper; A,B whatever callee returns
+func timePhase2[A, B any](on bool, phase string, fn func() (A, B)) (A, B) {
+	if !on {
+		return fn()
+	}
+	start := time.Now()
+	a, b := fn()
+	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	return a, b
+}
+
+//nolint:ireturn // generic timing wrapper; T whatever callee returns
+func timePhase3[T any](on bool, phase string, fn func() T) T {
+	if !on {
+		return fn()
+	}
+	start := time.Now()
+	out := fn()
+	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	return out
 }
