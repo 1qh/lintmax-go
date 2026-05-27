@@ -25,11 +25,11 @@ const (
 )
 
 type Issue struct {
-	Source     string
-	Name       string
-	Have       string
-	Latest     string
-	ReleasedAt time.Time
+	ReleasedAt time.Time `json:"releasedAt"`
+	Source     string    `json:"source"`
+	Name       string    `json:"name"`
+	Have       string    `json:"have"`
+	Latest     string    `json:"latest"`
 }
 
 var rxActionPin = regexp.MustCompile(`uses:\s+([\w./-]+)@(v\d[\d.]*)`)
@@ -164,6 +164,13 @@ func fetchLatestRelease(ctx context.Context, action string) (string, time.Time, 
 }
 
 func doReleaseFetch(ctx context.Context, owner, name, action string) (*ghRelease, error) {
+	if cached, ok := readCachedRelease(action); ok {
+		return cached, nil
+	}
+	return doReleaseFetchUncached(ctx, owner, name, action)
+}
+
+func doReleaseFetchUncached(ctx context.Context, owner, name, action string) (*ghRelease, error) {
 	url := "https://api.github.com/repos/" + owner + "/" + name + "/releases/latest"
 	req, rerr := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if rerr != nil {
@@ -189,6 +196,7 @@ func doReleaseFetch(ctx context.Context, owner, name, action string) (*ghRelease
 	if jerr != nil {
 		return nil, fmt.Errorf("decode: %w", jerr)
 	}
+	writeCachedRelease(action, &rel)
 	return &rel, nil
 }
 

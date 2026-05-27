@@ -24,6 +24,10 @@ type goModUpdate struct {
 }
 
 func scanGoMod(ctx context.Context, root string) []Issue {
+	sumKey := goSumKey(root)
+	if cached, ok := readCachedGoMod(sumKey); ok {
+		return cached
+	}
 	cctx, cancel := context.WithTimeout(ctx, 2*httpTimeout) //nolint:mnd // 2x http timeout for proxy-go resolve
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "go", "list", "-m", "-u", "-json", "-mod=mod", "all")
@@ -32,7 +36,9 @@ func scanGoMod(ctx context.Context, root string) []Issue {
 	if err != nil {
 		return nil
 	}
-	return parseGoModUpdates(out)
+	issues := parseGoModUpdates(out)
+	writeCachedGoMod(sumKey, issues)
+	return issues
 }
 
 func parseGoModUpdates(out []byte) []Issue {
