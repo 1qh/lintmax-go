@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const goExt = ".go"
@@ -40,28 +41,50 @@ func run(root string, write bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var changed []string
+	var (
+		mu       sync.Mutex
+		changed  []string
+		firstErr error
+	)
+	var wg sync.WaitGroup
 	for _, path := range files {
-		orig, readErr := os.ReadFile(path) //nolint:gosec // walked .go path under root, not user input
-		if readErr != nil {
-			return nil, fmt.Errorf("read %s: %w", path, readErr)
-		}
-		if IsGenerated(orig) {
-			continue
-		}
-		out := Compact(StripComments(orig))
-		if bytes.Equal(out, orig) {
-			continue
-		}
-		changed = append(changed, path)
-		if write {
-			writeErr := os.WriteFile(path, out, 0o600) //nolint:gosec // walked .go path under root, not user input
-			if writeErr != nil {
-				return nil, fmt.Errorf("write %s: %w", path, writeErr)
+		wg.Go(func() {
+			c, perr := processFile(path, write)
+			mu.Lock()
+			defer mu.Unlock()
+			if perr != nil && firstErr == nil {
+				firstErr = perr
+				return
 			}
-		}
+			if c {
+				changed = append(changed, path)
+			}
+		})
 	}
-	return changed, nil
+	wg.Wait()
+	return changed, firstErr
+}
+
+func processFile(path string, write bool) (bool, error) {
+	orig, readErr := os.ReadFile(path) //nolint:gosec // walked .go path under root, not user input
+	if readErr != nil {
+		return false, fmt.Errorf("read %s: %w", path, readErr)
+	}
+	if IsGenerated(orig) {
+		return false, nil
+	}
+	out := Compact(StripComments(orig))
+	if bytes.Equal(out, orig) {
+		return false, nil
+	}
+	if !write {
+		return true, nil
+	}
+	writeErr := os.WriteFile(path, out, 0o600) //nolint:gosec // walked .go path under root, not user input
+	if writeErr != nil {
+		return true, fmt.Errorf("write %s: %w", path, writeErr)
+	}
+	return true, nil
 }
 func Apply(root string) ([]string, error) { return run(root, true) }
 func Check(root string) ([]string, error) { return run(root, false) }
