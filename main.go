@@ -5,22 +5,20 @@ import (
 	"fmt"
 	"os"
 	"runtime/pprof"
-	"slices"
 
 	"github.com/1qh/lintmax-go/internal/run"
 	"github.com/1qh/lintmax-go/internal/version"
 )
 
-const usage = `lintmax-go — maximum-strictness Go quality gate (always-latest, never stale)
+const usage = `lintmax-go — maximum-strictness Go quality gate (always-latest, never stale, all-scanners-always)
 usage:
-  lintmax fix       format + autofix + full fast gate
-  lintmax check     verify only, no writes (CI mode)
+  lintmax fix       format + autofix + full gate (every linter + govulncheck + osv-scanner + nilaway + capslock)
+  lintmax check     verify only, no writes (CI mode) — same exhaustive scanner set as fix
   lintmax init      scaffold .editorconfig + CI workflow into this project
   lintmax update    reinstall every linter tool @latest
   lintmax upgrade   reinstall lintmax-go itself @latest
   lintmax version   print lintmax-go's version
   lintmax rules     list every enabled linter under the maxed config
-  lintmax fix --deep / check --deep   add slow scanners (govulncheck, osv-scanner)
 silent on success, exit 0 = clean.`
 
 const (
@@ -55,43 +53,41 @@ func realMain(args []string) int {
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
-	deep := slices.Contains(args[1:], "--deep")
-	inCI := os.Getenv("CI") != ""
 	ctx := context.Background()
 	switch args[0] {
 	case "version":
 		fmt.Fprintln(os.Stdout, version.Current())
 		return exitOK
 	case "update":
-		return report(run.EnsureLatest(ctx, true, true))
+		return report(run.EnsureLatest(ctx, true))
 	case "upgrade":
 		return report(run.Upgrade(ctx))
 	case "init":
 		return report(run.Init())
 	case "rules":
-		return rulesCmd(ctx, inCI)
+		return rulesCmd(ctx)
 	case "fix", "check":
-		return gateCmd(ctx, args[0] == "fix", deep, inCI)
+		return gateCmd(ctx, args[0] == "fix")
 	default:
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
 }
 
-func rulesCmd(ctx context.Context, inCI bool) int {
-	err := run.EnsureLatest(ctx, false, inCI)
+func rulesCmd(ctx context.Context) int {
+	err := run.EnsureLatest(ctx, false)
 	if err != nil {
 		return report(err)
 	}
 	return report(run.Rules(ctx))
 }
 
-func gateCmd(ctx context.Context, fix, deep, _ bool) int {
-	err := run.EnsureLatest(ctx, deep, false)
+func gateCmd(ctx context.Context, fix bool) int {
+	err := run.EnsureLatest(ctx, false)
 	if err != nil {
 		return report(err)
 	}
-	return report(run.Gate(ctx, fix, deep))
+	return report(run.Gate(ctx, fix))
 }
 
 func report(err error) int {

@@ -89,11 +89,8 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 	}
 }
 
-func toolsPresent(includeDeep bool) bool {
+func toolsPresent() bool {
 	for _, tool := range tools.All {
-		if tool.Deep && !includeDeep {
-			continue
-		}
 		_, err := os.Stat(bin(tool.Name))
 		if err != nil {
 			return false
@@ -102,8 +99,8 @@ func toolsPresent(includeDeep bool) bool {
 	return true
 }
 
-func EnsureLatest(ctx context.Context, includeDeep, force bool) error {
-	if !force && state.Load().Fresh(refreshTTL) && toolsPresent(includeDeep) {
+func EnsureLatest(ctx context.Context, force bool) error {
+	if !force && state.Load().Fresh(refreshTTL) && toolsPresent() {
 		return nil
 	}
 	var (
@@ -113,9 +110,6 @@ func EnsureLatest(ctx context.Context, includeDeep, force bool) error {
 	)
 	var wg sync.WaitGroup
 	for _, tool := range tools.All {
-		if tool.Deep && !includeDeep {
-			continue
-		}
 		wg.Go(func() {
 			cmd := exec.CommandContext(ctx, goCmd, "install", tool.Pkg+"@latest") //nolint:gosec // static registry paths
 			var buf bytes.Buffer
@@ -293,7 +287,7 @@ type collectResult struct {
 	notes []string
 }
 
-func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic, []string) {
+func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
 	gcArgs := []string{
 		"run", "--config", cfg,
 		"--concurrency=" + strconv.Itoa(linterConcurrency()),
@@ -302,11 +296,7 @@ func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic
 	if fix {
 		gcArgs = append(gcArgs, "--fix")
 	}
-	bufSize := 2 //nolint:mnd // golangci + deadcode
-	if deep {
-		bufSize = 3 //nolint:mnd // + nilaway when --deep
-	}
-	results := make(chan collectResult, bufSize)
+	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		gcOut, gcOK := runOut(ctx, bin("golangci-lint"), gcArgs...)
@@ -321,12 +311,10 @@ func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic
 		dcOut, _ := runCombined(ctx, bin("deadcode"), "-test", "./...")
 		results <- collectResult{diags: diag.ParseLines(dcOut, "deadcode")}
 	})
-	if deep {
-		wg.Go(func() {
-			nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
-			results <- collectResult{diags: diag.ParseAnalysis(nilOut, "nilaway")}
-		})
-	}
+	wg.Go(func() {
+		nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
+		results <- collectResult{diags: diag.ParseAnalysis(nilOut, "nilaway")}
+	})
 	wg.Wait()
 	close(results)
 	var diags []diag.Diagnostic
@@ -359,19 +347,17 @@ type gateCtx struct {
 	ctx       context.Context //nolint:containedctx // gate stage struct intentionally bundles ctx
 	timing    bool
 	fix       bool
-	deep      bool
 	cfg       string
 	skipCheck bool
 	greenKey  string
 }
 
-func Gate(ctx context.Context, fix, deep bool) error {
+func Gate(ctx context.Context, fix bool) error {
 	g := &gateCtx{
 		ctx:       ctx,
 		timing:    os.Getenv("LINTMAX_TIMING") == "1",
 		fix:       fix,
-		deep:      deep,
-		skipCheck: !fix && !deep && os.Getenv("LINTMAX_NO_SKIP") != "1",
+		skipCheck: !fix && os.Getenv("LINTMAX_NO_SKIP") != "1",
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {
@@ -429,7 +415,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
-			return collect(g.ctx, g.cfg, g.fix, g.deep)
+			return collect(g.ctx, g.cfg, g.fix)
 		})
 	})
 	topWG.Go(func() {
@@ -437,11 +423,9 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 			return staleness.Scan(g.ctx, ".")
 		})
 	})
-	if g.deep {
-		topWG.Go(func() {
-			deepNotes = timePhase3(g.timing, "deepScan", func() []string { return deepScan(g.ctx) })
-		})
-	}
+	topWG.Go(func() {
+		deepNotes = timePhase3(g.timing, "vulnScan", func() []string { return deepScan(g.ctx) })
+	})
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {

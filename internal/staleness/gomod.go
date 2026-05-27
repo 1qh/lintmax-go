@@ -50,7 +50,7 @@ func parseGoModUpdates(out []byte) []Issue {
 		if dec.Decode(&e) != nil {
 			break
 		}
-		if e.Main || e.Indirect || e.Update == nil || e.Update.Version == "" {
+		if e.Main || e.Update == nil || e.Update.Version == "" {
 			continue
 		}
 		if !e.Update.Time.IsZero() && time.Since(e.Update.Time) < tol {
