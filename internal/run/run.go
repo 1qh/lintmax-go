@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -285,7 +286,7 @@ type collectResult struct {
 func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic, []string) {
 	gcArgs := []string{
 		"run", "--config", cfg,
-		"--concurrency=4",
+		"--concurrency=" + strconv.Itoa(linterConcurrency()),
 		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
 	}
 	if fix {
@@ -451,15 +452,30 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 
 func testArgs() []string {
 	noRace := os.Getenv("LINTMAX_NO_RACE") == "1"
-	p := "4"
-	if noRace {
-		p = "8"
-	}
-	args := []string{"test", "-p=" + p, "-shuffle=on", "-vet=off"}
+	args := []string{"test", "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
 	}
 	return append(args, "./...")
+}
+
+func linterConcurrency() int {
+	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel test phase
+	if n < 2 {                //nolint:mnd // minimum useful parallelism
+		return 2
+	}
+	return n
+}
+
+func testConcurrency(noRace bool) int {
+	if noRace {
+		return runtime.NumCPU()
+	}
+	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel collect phase
+	if n < 2 {                //nolint:mnd
+		return 2
+	}
+	return n
 }
 
 func persistGreen(key string) {
