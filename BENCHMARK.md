@@ -97,3 +97,19 @@ consumer workflows; the gate auto-updates linter deps per 24h TTL.
 For lint+test split (separate jobs): set `LINTMAX_SKIP_TEST=1` in lint job to
 avoid running tests twice (once inside `lintmax-go check`, once in the test
 job). Saves the entire test phase wall in the lint lane.
+
+## Strictness sweep (v0.20)
+
+- `paralleltest` re-enabled: per-test DB isolation removes the shared-DB
+  false-positive class that earned its disable on 2026-05-26.
+- `tparallel`, `thelper`, `testifylint`, `usestdlibvars` confirmed active via
+  `default: all` (no disable entries).
+- `forbidigo` bans extended to enforce SSOT boundaries:
+  - `os.Getenv` — env vars must flow through `eximagent.Config` (exempt
+    config.go via per-line `//nolint:forbidigo`).
+  - `time.Now` — time must flow through `eximagent.Store.Clock` (exempt
+    clock.go via per-line `//nolint:forbidigo`).
+  - `context.Background` — tests must use `t.Context()`.
+  - `os.Setenv` — tests must use `TestDefaults` Config struct.
+  - `fmt.Print*` — existing ban, now covers `_test.go` via repo-wide scope
+    (use `t.Log` in tests).

@@ -24,7 +24,6 @@ linters:
     - mnd              # overlaps revive add-constant — same finding twice, double-reporting
     - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
     - exhaustruct      # opt-out mechanism IS comments; comment-strip policy deletes them; mutually exclusive
-    - paralleltest     # EARNED: panics tests sharing t.Setenv/DB; observed real-world false-positive 2026-05-26
   settings:
     errcheck:
       check-type-assertions: true
@@ -103,6 +102,14 @@ linters:
           msg: use log/slog (the unstructured log package is banned)
         - pattern: '^fmt\.Print(|f|ln)$'
           msg: use slog or stderr writer; bare fmt.Print writes to stdout and pollutes agent-first NDJSON
+        - pattern: '^os\.Getenv$'
+          msg: env vars must flow through eximagent.Config (forbidigo: ban os.Getenv outside config.go)
+        - pattern: '^time\.Now$'
+          msg: time must flow through eximagent.Store.Clock (forbidigo: ban time.Now outside clock.go)
+        - pattern: '^context\.Background$'
+          msg: tests must use t.Context() (forbidigo: ban context.Background in _test.go)
+        - pattern: '^os\.Setenv$'
+          msg: tests must use TestDefaults Config struct (forbidigo: ban os.Setenv in _test.go)
       exclude-godoc-examples: true
       analyze-types: true
     exhaustive:
