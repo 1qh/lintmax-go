@@ -26,8 +26,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
-      - name: "dogfood — check --deep (max strictness: every linter + nilaway + govulncheck + osv-scanner)"
-        run: $HOME/go/bin/lintmax-go check --deep
+      - name: "dogfood — check (every linter + nilaway + deadcode + govulncheck + osv-scanner + capslock + staleness all always-on)"
+        run: $HOME/go/bin/lintmax-go check
       - name: cancel sibling jobs on failure
         if: failure()
         env:

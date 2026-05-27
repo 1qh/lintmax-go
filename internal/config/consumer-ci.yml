@@ -44,4 +44,4 @@ jobs:
             gocaches-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
             gocaches-${{ runner.os }}-${{ runner.arch }}-
       - run: go install github.com/1qh/lintmax-go@latest
-      - run: lintmax-go check --deep
+      - run: lintmax-go check
