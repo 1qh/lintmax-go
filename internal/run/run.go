@@ -79,7 +79,7 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 		next.Versions[tool.Name] = ver
 		old := prev.Versions[tool.Name]
 		if old != emptyArg && old != ver {
-			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver) //nolint:forbidigo // reason: bootstrap status emit
+			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver) //nolint:forbidigo // reason: bootstrap
 		}
 	}
 	next.LastCheck = time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
