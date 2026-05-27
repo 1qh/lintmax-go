@@ -267,7 +267,11 @@ type collectResult struct {
 }
 
 func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic, []string) {
-	gcArgs := []string{"run", "--config", cfg, "--output.json.path=stdout", "--output.text.path=" + os.DevNull}
+	gcArgs := []string{
+		"run", "--config", cfg,
+		"--concurrency=4",
+		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
+	}
 	if fix {
 		gcArgs = append(gcArgs, "--fix")
 	}
@@ -287,12 +291,8 @@ func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic
 		results <- out
 	})
 	wg.Go(func() {
-		dcOut, dcOK := runCombined(ctx, bin("deadcode"), "-test", "./...")
-		var d []diag.Diagnostic
-		if !dcOK {
-			d = diag.ParseLines(dcOut, "deadcode")
-		}
-		results <- collectResult{diags: d}
+		dcOut, _ := runCombined(ctx, bin("deadcode"), "-test", "./...")
+		results <- collectResult{diags: diag.ParseLines(dcOut, "deadcode")}
 	})
 	if deep {
 		wg.Go(func() {
@@ -408,7 +408,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	})
 	topWG.Go(func() {
 		testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
-			return runCombined(g.ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+			return runCombined(g.ctx, goCmd, testArgs()...)
 		})
 	})
 	topWG.Wait()
@@ -429,6 +429,14 @@ func appendStaleness(ctx context.Context, timing bool, notes []string) []string 
 		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
 	return notes
+}
+
+func testArgs() []string {
+	args := []string{"test", "-p=4", "-shuffle=on"}
+	if os.Getenv("LINTMAX_NO_RACE") != "1" {
+		args = append(args, "-race")
+	}
+	return append(args, "./...")
 }
 
 func persistGreen(key string) {
