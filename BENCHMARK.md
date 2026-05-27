@@ -43,6 +43,11 @@ incl. clickhouse-go/v2, excelize/v2, genai, otel/sdk).
 | + LINTMAX_SKIP_TEST env | 8.6s → 6.2s | consumer CI lane split (don't test twice) |
 | + nilaway Deep flag | -10s cold CI | install only when needed |
 | + drop force=inCI from EnsureLatest | -30s CI warm | trust 24h TTL + ~/go/bin cache |
+| + staleness joins topWG | -2ms warm / -10s cold | parallel with collect+test, not serial post-Wait |
+| + go test -vet=off | -1-3s | golangci-lint's govet covers it; kill dup pre-test vet |
+| + dynamic NumCPU concurrency | -8+ vcpu | linter+test scale with host CPU (was hardcoded 4) |
+| + deepScan parallel | check --deep 7s→6s | govulncheck+osv-scanner+capslock concurrent |
+| + deepScan joins topWG | check --deep 6s→5s | parallel with collect+test+staleness (623% CPU local) |
 
 ## Tree-hash cache
 
