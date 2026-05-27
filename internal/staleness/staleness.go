@@ -40,7 +40,18 @@ func Scan(ctx context.Context, root string) ([]Issue, error) {
 	if os.Getenv(envSkip) == "1" {
 		return nil, nil
 	}
-	return scanActions(ctx, root)
+	var (
+		actionsOut []Issue
+		gomodOut   []Issue
+	)
+	var wg sync.WaitGroup
+	wg.Go(func() { actionsOut = scanActions(ctx, root) })
+	wg.Go(func() { gomodOut = scanGoMod(ctx, root) })
+	wg.Wait()
+	merged := make([]Issue, 0, len(actionsOut)+len(gomodOut))
+	merged = append(merged, actionsOut...)
+	merged = append(merged, gomodOut...)
+	return merged, nil
 }
 
 func tolerance() time.Duration {
@@ -54,14 +65,13 @@ func tolerance() time.Duration {
 	return toleranceWindow
 }
 
-func scanActions(ctx context.Context, root string) ([]Issue, error) {
+func scanActions(ctx context.Context, root string) []Issue {
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, nil //nolint:nilerr // no workflows dir = nothing to check
+		return nil
 	}
-	seen := collectActionPins(dir, entries)
-	return checkActionVersions(ctx, seen), nil
+	return checkActionVersions(ctx, collectActionPins(dir, entries))
 }
 
 func collectActionPins(dir string, entries []os.DirEntry) map[string]string {
