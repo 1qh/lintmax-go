@@ -410,10 +410,6 @@ func (g *gateCtx) runGate() error {
 	if len(changed) > 0 {
 		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
-	if g.deep {
-		deepNotes := timePhase3(g.timing, "deepScan", func() []string { return deepScan(g.ctx) })
-		notes = append(notes, deepNotes...)
-	}
 	err := report(diags, notes)
 	if err == nil && g.skipCheck && g.greenKey != "" {
 		persistGreen(g.greenKey)
@@ -426,6 +422,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var notes []string
 	var stale []staleness.Issue
 	var staleErr error
+	var deepNotes []string
 	var testOut []byte
 	testOK := true
 	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1"
@@ -440,6 +437,11 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 			return staleness.Scan(g.ctx, ".")
 		})
 	})
+	if g.deep {
+		topWG.Go(func() {
+			deepNotes = timePhase3(g.timing, "deepScan", func() []string { return deepScan(g.ctx) })
+		})
+	}
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
@@ -457,6 +459,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	if rendered := staleness.Format(stale); rendered != "" {
 		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
 	}
+	notes = append(notes, deepNotes...)
 	return diags, notes
 }
 
