@@ -15,6 +15,11 @@ jobs:
       - uses: actions/checkout@v6
       - name: shellcheck install.sh + any future shell scripts
         run: shellcheck install.sh
+      - name: cancel sibling jobs on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
   dogfood:
     runs-on: ubuntu-latest
     steps:
@@ -23,12 +28,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: cache go bin (every linter tool lintmax-go installs)
+      - name: cache go bin (run_number-keyed so post-install bumps persist; tools.go is the structural-change signal via cascading restore)
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: gobin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/tools/tools.go') }}
+          key: gobin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/tools/tools.go') }}-${{ github.run_number }}
           restore-keys: |
+            gobin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/tools/tools.go') }}-
             gobin-${{ runner.os }}-${{ runner.arch }}-
       - name: cache lintmax-go staleness (24h GH/go-list disk cache)
         uses: actions/cache@v5
@@ -52,3 +58,8 @@ jobs:
         run: go install .
       - name: "dogfood — check --deep (max strictness: every linter + nilaway + govulncheck + osv-scanner)"
         run: $HOME/go/bin/lintmax-go check --deep
+      - name: cancel sibling jobs on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
