@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   shell:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
       - uses: actions/checkout@v6
       - name: shellcheck install.sh + any future shell scripts
@@ -21,7 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
   dogfood:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
