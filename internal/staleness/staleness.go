@@ -37,7 +37,7 @@ var rxActionPin = regexp.MustCompile(`uses:\s+([\w./-]+)@(v\d[\d.]*)`)
 var errSkip = errors.New("staleness scan skipped")
 
 func Scan(ctx context.Context, root string) ([]Issue, error) {
-	if os.Getenv(envSkip) == "1" {
+	if os.Getenv(envSkip) == "1" { //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
 		return nil, nil
 	}
 	var (
@@ -55,7 +55,7 @@ func Scan(ctx context.Context, root string) ([]Issue, error) {
 }
 
 func tolerance() time.Duration {
-	if v := os.Getenv(envTolerance); v != "" {
+	if v := os.Getenv(envTolerance); v != "" { //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
 		var n int
 		_, err := fmt.Sscanf(v, "%d", &n)
 		if err == nil && n >= 0 {
@@ -177,7 +177,7 @@ func doReleaseFetchUncached(ctx context.Context, owner, name, action string) (*g
 		return nil, fmt.Errorf("request: %w", rerr)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if tok := os.Getenv(envToken); tok != "" {
+	if tok := os.Getenv(envToken); tok != "" { //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	resp, derr := (&http.Client{Timeout: httpTimeout}).Do(req)

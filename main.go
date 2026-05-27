@@ -30,7 +30,7 @@ const (
 func main() { os.Exit(realMain(os.Args[1:])) }
 
 func maybeProfile() func() {
-	path := os.Getenv("LINTMAX_CPUPROFILE")
+	path := os.Getenv("LINTMAX_CPUPROFILE") //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
 	if path == "" {
 		return func() {}
 	}
@@ -53,7 +53,7 @@ func realMain(args []string) int {
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
-	ctx := context.Background()
+	ctx := context.Background() //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; top-level context seed lives here by design
 	switch args[0] {
 	case "version":
 		fmt.Fprintln(os.Stdout, version.Current())
