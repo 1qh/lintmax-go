@@ -42,6 +42,7 @@ incl. clickhouse-go/v2, excelize/v2, genai, otel/sdk).
 | + parallel transform | 53ms→20ms | per-file goroutines |
 | + LINTMAX_SKIP_TEST env | 8.6s → 6.2s | consumer CI lane split (don't test twice) |
 | + nilaway Deep flag | -10s cold CI | install only when needed |
+| + drop force=inCI from EnsureLatest | -30s CI warm | trust 24h TTL + ~/go/bin cache |
 
 ## Tree-hash cache
 
