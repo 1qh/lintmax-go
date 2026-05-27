@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -88,22 +89,32 @@ func collectActionPins(dir string, entries []os.DirEntry) map[string]string {
 }
 
 func checkActionVersions(ctx context.Context, pins map[string]string) []Issue {
-	out := make([]Issue, 0, len(pins))
+	type res struct{ issue Issue }
 	tol := tolerance()
+	ch := make(chan res, len(pins))
+	var wg sync.WaitGroup
 	for action, have := range pins {
-		latest, releasedAt, err := fetchLatestRelease(ctx, action)
-		if err != nil {
-			continue
-		}
-		if normalizeMajor(have) == normalizeMajor(latest) {
-			continue
-		}
-		if time.Since(releasedAt) < tol {
-			continue
-		}
-		out = append(out, Issue{
-			Source: "actions", Name: action, Have: have, Latest: latest, ReleasedAt: releasedAt,
+		wg.Go(func() {
+			latest, releasedAt, err := fetchLatestRelease(ctx, action)
+			if err != nil {
+				return
+			}
+			if normalizeMajor(have) == normalizeMajor(latest) {
+				return
+			}
+			if time.Since(releasedAt) < tol {
+				return
+			}
+			ch <- res{issue: Issue{
+				Source: "actions", Name: action, Have: have, Latest: latest, ReleasedAt: releasedAt,
+			}}
 		})
+	}
+	wg.Wait()
+	close(ch)
+	out := make([]Issue, 0, len(pins))
+	for r := range ch {
+		out = append(out, r.issue)
 	}
 	return out
 }

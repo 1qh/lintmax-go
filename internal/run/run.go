@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1qh/lintmax-go/internal/config"
@@ -257,24 +258,52 @@ func deepScan(ctx context.Context) []string {
 	return notes
 }
 
-func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
-	var diags []diag.Diagnostic
-	var notes []string
+type collectResult struct {
+	diags []diag.Diagnostic
+	notes []string
+}
+
+func collect(ctx context.Context, cfg string, fix, deep bool) ([]diag.Diagnostic, []string) {
 	gcArgs := []string{"run", "--config", cfg, "--output.json.path=stdout", "--output.text.path=" + os.DevNull}
 	if fix {
 		gcArgs = append(gcArgs, "--fix")
 	}
-	gcOut, gcOK := runOut(ctx, bin("golangci-lint"), gcArgs...)
-	gcDiags := diag.ParseGolangci(gcOut)
-	diags = append(diags, gcDiags...)
-	if !gcOK && len(gcDiags) == 0 {
-		notes = append(notes, "golangci-lint:\n"+tailLines(gcOut, 15))
+	bufSize := 2 //nolint:mnd // golangci + deadcode
+	if deep {
+		bufSize = 3 //nolint:mnd // + nilaway when --deep
 	}
-	nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
-	diags = append(diags, diag.ParseAnalysis(nilOut, "nilaway")...)
-	dcOut, dcOK := runCombined(ctx, bin("deadcode"), "-test", "./...")
-	if !dcOK {
-		diags = append(diags, diag.ParseLines(dcOut, "deadcode")...)
+	results := make(chan collectResult, bufSize)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		gcOut, gcOK := runOut(ctx, bin("golangci-lint"), gcArgs...)
+		gcDiags := diag.ParseGolangci(gcOut)
+		out := collectResult{diags: gcDiags}
+		if !gcOK && len(gcDiags) == 0 {
+			out.notes = []string{"golangci-lint:\n" + tailLines(gcOut, 15)}
+		}
+		results <- out
+	})
+	wg.Go(func() {
+		dcOut, dcOK := runCombined(ctx, bin("deadcode"), "-test", "./...")
+		var d []diag.Diagnostic
+		if !dcOK {
+			d = diag.ParseLines(dcOut, "deadcode")
+		}
+		results <- collectResult{diags: d}
+	})
+	if deep {
+		wg.Go(func() {
+			nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
+			results <- collectResult{diags: diag.ParseAnalysis(nilOut, "nilaway")}
+		})
+	}
+	wg.Wait()
+	close(results)
+	var diags []diag.Diagnostic
+	var notes []string
+	for r := range results {
+		diags = append(diags, r.diags...)
+		notes = append(notes, r.notes...)
 	}
 	return diags, notes
 }
@@ -306,15 +335,25 @@ func Gate(ctx context.Context, fix, deep bool) error {
 	if terr != nil {
 		return terr
 	}
-	diags, notes := timePhase2(timing, "collect", func() ([]diag.Diagnostic, []string) {
-		return collect(ctx, cfg, fix)
+	var diags []diag.Diagnostic
+	var notes []string
+	var testOut []byte
+	var testOK bool
+	var topWG sync.WaitGroup
+	topWG.Go(func() {
+		diags, notes = timePhase2(timing, "collect", func() ([]diag.Diagnostic, []string) {
+			return collect(ctx, cfg, fix, deep)
+		})
 	})
+	topWG.Go(func() {
+		testOut, testOK = timePhase2(timing, "test", func() ([]byte, bool) {
+			return runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
+		})
+	})
+	topWG.Wait()
 	if len(changed) > 0 {
 		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
-	testOut, testOK := timePhase2(timing, "test", func() ([]byte, bool) {
-		return runCombined(ctx, goCmd, "test", "-race", "-shuffle=on", "./...")
-	})
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
 	}
