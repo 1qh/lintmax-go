@@ -448,8 +448,13 @@ func appendStaleness(ctx context.Context, timing bool, notes []string) []string 
 }
 
 func testArgs() []string {
-	args := []string{"test", "-p=4", "-shuffle=on"}
-	if os.Getenv("LINTMAX_NO_RACE") != "1" {
+	noRace := os.Getenv("LINTMAX_NO_RACE") == "1"
+	p := "4"
+	if noRace {
+		p = "8"
+	}
+	args := []string{"test", "-p=" + p, "-shuffle=on"}
+	if !noRace {
 		args = append(args, "-race")
 	}
 	return append(args, "./...")
