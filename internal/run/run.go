@@ -415,18 +415,21 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var diags []diag.Diagnostic
 	var notes []string
 	var testOut []byte
-	var testOK bool
+	testOK := true
+	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1"
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
 			return collect(g.ctx, g.cfg, g.fix, g.deep)
 		})
 	})
-	topWG.Go(func() {
-		testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
-			return runCombined(g.ctx, goCmd, testArgs()...)
+	if !skipTest {
+		topWG.Go(func() {
+			testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
+				return runCombined(g.ctx, goCmd, testArgs()...)
+			})
 		})
-	})
+	}
 	topWG.Wait()
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
