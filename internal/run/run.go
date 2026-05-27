@@ -79,7 +79,12 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 		next.Versions[tool.Name] = ver
 		old := prev.Versions[tool.Name]
 		if old != emptyArg && old != ver {
-			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver) //nolint:forbidigo // reason: bootstrap CLI status out
+			//nolint:forbidigo // reason: bootstrap CLI status out
+			fmt.Fprintf(
+				os.Stderr,
+				"↑ %s %s → %s\n",
+				tool.Name, old, ver,
+			)
 		}
 	}
 	next.LastCheck = time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
@@ -353,11 +358,15 @@ type gateCtx struct {
 }
 
 func Gate(ctx context.Context, fix bool) error {
+	//nolint:forbidigo // reason: bootstrap layer owns env reads
+	timing := os.Getenv("LINTMAX_TIMING") == "1"
+	//nolint:forbidigo // reason: bootstrap layer owns env reads
+	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
 	g := &gateCtx{
 		ctx:       ctx,
-		timing:    os.Getenv("LINTMAX_TIMING") == "1",          //nolint:forbidigo // reason: bootstrap layer owns env reads
+		timing:    timing,
 		fix:       fix,
-		skipCheck: !fix && os.Getenv("LINTMAX_NO_SKIP") != "1", //nolint:forbidigo // reason: bootstrap layer owns env reads
+		skipCheck: !fix && !noSkip,
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {
