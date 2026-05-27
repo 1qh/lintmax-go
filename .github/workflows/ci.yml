@@ -50,5 +50,5 @@ jobs:
             gocaches-${{ runner.os }}-${{ runner.arch }}-
       - name: install self (so the gate runs the compiled binary, not 'go run' recompile)
         run: go install .
-      - name: dogfood — check --deep (max strictness: every linter + nilaway + govulncheck + osv-scanner)
+      - name: "dogfood — check --deep (max strictness: every linter + nilaway + govulncheck + osv-scanner)"
         run: $HOME/go/bin/lintmax-go check --deep
