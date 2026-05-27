@@ -103,13 +103,13 @@ linters:
         - pattern: '^fmt\.Print(|f|ln)$'
           msg: use slog or stderr writer; bare fmt.Print writes to stdout and pollutes agent-first NDJSON
         - pattern: '^os\.Getenv$'
-          msg: env vars must flow through eximagent.Config (forbidigo: ban os.Getenv outside config.go)
+          msg: "env vars must flow through eximagent.Config (forbidigo: ban os.Getenv outside config.go)"
         - pattern: '^time\.Now$'
-          msg: time must flow through eximagent.Store.Clock (forbidigo: ban time.Now outside clock.go)
+          msg: "time must flow through eximagent.Store.Clock (forbidigo: ban time.Now outside clock.go)"
         - pattern: '^context\.Background$'
-          msg: tests must use t.Context() (forbidigo: ban context.Background in _test.go)
+          msg: "tests must use t.Context() (forbidigo: ban context.Background in _test.go)"
         - pattern: '^os\.Setenv$'
-          msg: tests must use TestDefaults Config struct (forbidigo: ban os.Setenv in _test.go)
+          msg: "tests must use TestDefaults Config struct (forbidigo: ban os.Setenv in _test.go)"
       exclude-godoc-examples: true
       analyze-types: true
     exhaustive:
@@ -156,7 +156,16 @@ linters:
     # turn OFF golangci's silent default suppressions — report everything.
     generated: lax
     presets: []
-    rules: []
+    rules:
+      # EARNED: CLI binaries (cli/, cmd/) ARE the bootstrap layer; fmt.Print to stdout + os.Getenv
+      # for raw flags ARE the legitimate exception. Strictness applies to library code only.
+      - path: '(^|/)(cli|cmd)/'
+        linters:
+          - forbidigo
+      # EARNED: fuzz files MUST be in the same package as the target (Go fuzz convention) — testpackage rule is wrong for fuzz.
+      - path: '_fuzz_test\.go$'
+        linters:
+          - testpackage
 
 formatters:
   enable:
