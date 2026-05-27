@@ -29,7 +29,7 @@ func TestNormalizeMajorStripsMinorPatch(t *testing.T) {
 
 func TestScanReturnsNilWhenSkipped(t *testing.T) {
 	t.Setenv("LINTMAX_SKIP_STALENESS", "1")
-	out, err := staleness.Scan(context.Background(), ".") //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; test harness context lives here by design
+	out, err := staleness.Scan(context.Background(), ".") //nolint:forbidigo // reason: bootstrap test harness ctx
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestScanReturnsNilWhenSkipped(t *testing.T) {
 func TestScanActionsNoWorkflowsIsEmpty(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	out, err := staleness.Scan(context.Background(), dir) //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; test harness context lives here by design
+	out, err := staleness.Scan(context.Background(), dir) //nolint:forbidigo // reason: bootstrap test harness ctx
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestScanActionsNoWorkflowsIsEmpty(t *testing.T) {
 func TestScanActionsParsesPinsFromYAML(t *testing.T) {
 	dir := writeFixtureWorkflow(t)
 	t.Setenv("LINTMAX_SKIP_STALENESS", "1")
-	_, _ = staleness.Scan(context.Background(), dir) //nolint:errcheck,forbidigo // smoke test; lintmax-go is the bootstrap layer; test harness context lives here by design
+	_, _ = staleness.Scan(context.Background(), dir) //nolint:errcheck,forbidigo // reason: smoke test; bootstrap test ctx
 }
 
 func writeFixtureWorkflow(t *testing.T) string {
@@ -77,7 +77,7 @@ func TestFormatRendersIssues(t *testing.T) {
 	issues := []staleness.Issue{{
 		Source: "actions", Name: "actions/checkout",
 		Have: "v5", Latest: "v6",
-		ReleasedAt: time.Now().Add(-30 * 24 * time.Hour), //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+		ReleasedAt: time.Now().Add(-30 * 24 * time.Hour), //nolint:forbidigo // reason: bootstrap clock read
 	}}
 	out := staleness.Format(issues)
 	if out == "" {

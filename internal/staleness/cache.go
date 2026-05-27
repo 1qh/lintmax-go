@@ -102,7 +102,8 @@ func writeCachedGoMod(key string, issues []Issue) {
 	if mkErr != nil {
 		return
 	}
-	raw, err := json.Marshal(cachedGoMod{Issues: issues, CachedAt: time.Now()}) //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	now := time.Now() //nolint:forbidigo // reason: bootstrap clock read
+	raw, err := json.Marshal(cachedGoMod{Issues: issues, CachedAt: now})
 	if err != nil {
 		return
 	}
@@ -118,7 +119,8 @@ func writeCachedRelease(action string, rel *ghRelease) {
 	if mkErr != nil {
 		return
 	}
-	raw, err := json.Marshal(cachedRelease{Release: *rel, CachedAt: time.Now()}) //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	now := time.Now() //nolint:forbidigo // reason: bootstrap clock read
+	raw, err := json.Marshal(cachedRelease{Release: *rel, CachedAt: now})
 	if err != nil {
 		return
 	}

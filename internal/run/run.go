@@ -37,10 +37,10 @@ const (
 var ErrGate = errors.New("gate failed")
 
 func binDir() string {
-	if v := os.Getenv("GOBIN"); v != emptyArg { //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+	if v := os.Getenv("GOBIN"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
 		return v
 	}
-	if v := os.Getenv("GOPATH"); v != emptyArg { //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+	if v := os.Getenv("GOPATH"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
 		return filepath.Join(v, "bin")
 	}
 	home, err := os.UserHomeDir()
@@ -79,10 +79,10 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 		next.Versions[tool.Name] = ver
 		old := prev.Versions[tool.Name]
 		if old != emptyArg && old != ver {
-			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver) //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; CLI status output lives here by design
+			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver) //nolint:forbidigo // reason: bootstrap CLI status out
 		}
 	}
-	next.LastCheck = time.Now() //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	next.LastCheck = time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	saveErr := next.Save()
 	if saveErr != nil {
 		fmt.Fprintln(os.Stderr, "lintmax-go: version cache:", saveErr)
@@ -355,9 +355,9 @@ type gateCtx struct {
 func Gate(ctx context.Context, fix bool) error {
 	g := &gateCtx{
 		ctx:       ctx,
-		timing:    os.Getenv("LINTMAX_TIMING") == "1",           //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+		timing:    os.Getenv("LINTMAX_TIMING") == "1",          //nolint:forbidigo // reason: bootstrap layer owns env reads
 		fix:       fix,
-		skipCheck: !fix && os.Getenv("LINTMAX_NO_SKIP") != "1", //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+		skipCheck: !fix && os.Getenv("LINTMAX_NO_SKIP") != "1", //nolint:forbidigo // reason: bootstrap layer owns env reads
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {
@@ -411,7 +411,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var deepNotes []string
 	var testOut []byte
 	testOK := true
-	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1" //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
@@ -448,7 +448,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 }
 
 func testArgs() []string {
-	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; env reads live here by design
+	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
 	args := []string{"test", "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
@@ -536,7 +536,7 @@ func timePhase[T any](on bool, phase string, fn func() (T, error)) (T, error) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out, err := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return out, err
@@ -547,7 +547,7 @@ func timePhase2[A, B any](on bool, phase string, fn func() (A, B)) (A, B) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	a, b := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return a, b
@@ -558,7 +558,7 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: lintmax-go is the bootstrap layer; clock reads live here by design
+	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out := fn()
 	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
 	return out
