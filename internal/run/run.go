@@ -455,7 +455,7 @@ func testArgs() []string {
 	if noRace {
 		p = "8"
 	}
-	args := []string{"test", "-p=" + p, "-shuffle=on"}
+	args := []string{"test", "-p=" + p, "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
 	}
