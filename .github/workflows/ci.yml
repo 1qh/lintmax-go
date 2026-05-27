@@ -24,37 +24,7 @@ jobs:
     runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: cache go bin (run_number-keyed so post-install bumps persist; tools.go is the structural-change signal via cascading restore)
-        uses: actions/cache@v5
-        with:
-          path: ~/go/bin
-          key: gobin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/tools/tools.go') }}-${{ github.run_number }}
-          restore-keys: |
-            gobin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/tools/tools.go') }}-
-            gobin-${{ runner.os }}-${{ runner.arch }}-
-      - name: cache lintmax-go staleness (24h GH/go-list disk cache)
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/lintmax-go
-          key: lintmaxcache-${{ runner.os }}-${{ runner.arch }}-${{ github.run_number }}
-          restore-keys: |
-            lintmaxcache-${{ runner.os }}-${{ runner.arch }}-
-      - name: cache go-build (build + test + golangci-lint analysis)
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-            ~/.cache/golangci-lint
-          key: gocaches-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go', '!**/*_test.go') }}
-          restore-keys: |
-            gocaches-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
-            gocaches-${{ runner.os }}-${{ runner.arch }}-
-      - name: install self (so the gate runs the compiled binary, not 'go run' recompile)
+      - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
       - name: "dogfood — check --deep (max strictness: every linter + nilaway + govulncheck + osv-scanner)"
         run: $HOME/go/bin/lintmax-go check --deep
