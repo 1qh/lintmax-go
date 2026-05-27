@@ -16,8 +16,8 @@ tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | grep -m1
 ver=${tag#v}
 url="https://github.com/$repo/releases/download/$tag/lintmax-go_${ver}_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 echo "downloading lintmax-go $tag ($os/$arch)…"
 curl -fsSL "$url" | tar -xz -C "$tmp"
 install -m 0755 "$tmp/lintmax-go" "$bindir/lintmax-go"
-rm -rf "$tmp"
 echo "installed to $bindir/lintmax-go"
