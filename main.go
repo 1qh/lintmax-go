@@ -86,8 +86,8 @@ func rulesCmd(ctx context.Context, inCI bool) int {
 	return report(run.Rules(ctx))
 }
 
-func gateCmd(ctx context.Context, fix, deep, inCI bool) int {
-	err := run.EnsureLatest(ctx, deep, inCI)
+func gateCmd(ctx context.Context, fix, deep, _ bool) int {
+	err := run.EnsureLatest(ctx, deep, false)
 	if err != nil {
 		return report(err)
 	}
