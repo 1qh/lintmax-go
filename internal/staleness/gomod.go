@@ -36,12 +36,31 @@ func scanGoMod(ctx context.Context, root string) []Issue {
 	if err != nil {
 		return nil
 	}
-	issues := parseGoModUpdates(out)
+	issues := parseGoModUpdates(out, usedModules(cctx, root))
 	writeCachedGoMod(sumKey, issues)
 	return issues
 }
 
-func parseGoModUpdates(out []byte) []Issue {
+// usedModules returns the set of module paths the main module's packages actually
+// compile. Modules absent here are graph-only noise (deps-of-deps that `go mod why`
+// reports as "main module does not need") — enforcing latest on them is meaningless.
+func usedModules(ctx context.Context, root string) map[string]bool {
+	cmd := exec.CommandContext(ctx, "go", "list", "-deps", "-f", "{{with .Module}}{{.Path}}{{end}}", "./...")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	used := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if p := strings.TrimSpace(line); p != "" {
+			used[p] = true
+		}
+	}
+	return used
+}
+
+func parseGoModUpdates(out []byte, used map[string]bool) []Issue {
 	tol := tolerance()
 	dec := json.NewDecoder(strings.NewReader(string(out)))
 	result := make([]Issue, 0, 16) //nolint:mnd // initial capacity hint
@@ -49,6 +68,9 @@ func parseGoModUpdates(out []byte) []Issue {
 		var e goModEntry
 		if dec.Decode(&e) != nil {
 			break
+		}
+		if e.Indirect && len(used) > 0 && !used[e.Path] {
+			continue
 		}
 		if e.Main || e.Update == nil || e.Update.Version == "" {
 			continue
