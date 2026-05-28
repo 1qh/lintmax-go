@@ -21,10 +21,18 @@ linters:
     - wsl              # whitespace around blocks; direct conflict with compact-style policy
     - wsl_v5           # successor of wsl; same conflict
     - nlreturn         # blank-before-return; direct conflict with compact-style policy
-    - mnd              # overlaps revive add-constant — same finding twice, double-reporting
     - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
-    - exhaustruct      # opt-out mechanism IS comments; comment-strip policy deletes them; mutually exclusive
   settings:
+    goconst:
+      ignore-calls: false
+      min-occurrences: 2
+    mnd:
+      ignored-numbers: ['0', '1']
+    exhaustruct:
+      # only enforce on first-party structs — forgotten-field protection is for OUR
+      # DTOs/models/config; third-party struct construction completeness is not ours to own.
+      include:
+        - '^github\.com/EximAgent/eximagent.*'
     errcheck:
       check-type-assertions: true
       check-blank: true

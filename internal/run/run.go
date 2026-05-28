@@ -19,6 +19,7 @@ import (
 
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/diag"
+	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -430,6 +431,12 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	topWG.Go(func() {
 		deepNotes = timePhase3(g.timing, "vulnScan", func() []string { return deepScan(g.ctx) })
 	})
+	var dupIssues []dupconst.Issue
+	topWG.Go(func() {
+		dupIssues, _ = timePhase(g.timing, "dupconst", func() ([]dupconst.Issue, error) {
+			return dupconst.Scan(g.ctx, ".")
+		})
+	})
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
@@ -460,6 +467,10 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 		if len(direct) > 0 {
 			notes = append(notes, fmt.Sprintf("%d direct dep(s) stale (bump or pin):\n%s", len(direct), staleness.Format(direct)))
 		}
+	}
+	if rendered := dupconst.Format(dupIssues); rendered != "" {
+		notes = append(notes, fmt.Sprintf("%d duplicate-value const group(s) (collapse to one):\n%s",
+			len(dupIssues), rendered))
 	}
 	notes = append(notes, deepNotes...)
 	return diags, notes
