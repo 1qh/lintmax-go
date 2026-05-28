@@ -444,8 +444,22 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	if staleErr != nil {
 		notes = append(notes, "staleness scan: "+staleErr.Error())
 	}
-	if rendered := staleness.Format(stale); rendered != "" {
-		notes = append(notes, fmt.Sprintf("%d dep(s) stale (bump or pin):\n%s", len(stale), rendered))
+	if len(stale) > 0 {
+		var direct, indirect []staleness.Issue
+		for _, s := range stale {
+			if strings.Contains(s.Source, "indirect") {
+				indirect = append(indirect, s)
+			} else {
+				direct = append(direct, s)
+			}
+		}
+		if len(indirect) > 0 {
+			fmt.Fprintf(os.Stderr, "advisory: %d indirect dep(s) behind latest (MVS-capped — bump the requiring dep to move):\n%s\n",
+				len(indirect), staleness.Format(indirect))
+		}
+		if len(direct) > 0 {
+			notes = append(notes, fmt.Sprintf("%d direct dep(s) stale (bump or pin):\n%s", len(direct), staleness.Format(direct)))
+		}
 	}
 	notes = append(notes, deepNotes...)
 	return diags, notes
