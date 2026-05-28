@@ -12,6 +12,8 @@ Go's compiler is already stricter than `tsc` on some axes (unused vars/imports a
 
 No linter version is ever pinned. Every tool is fetched `@latest` on each run, and the embedded golangci config uses `default: all` — so the moment golangci ships a new linter, your build runs it. You are always on the bleeding edge; you fix-forward, you never accumulate lint debt.
 
+This extends to your own dependencies. A realtime staleness scan checks `go.mod` deps and GitHub-Action pins against upstream the instant a newer release publishes (tolerance 0; opt into a buffer via `LINTMAX_STALENESS_TOLERANCE_DAYS`). A stale **direct** dep — or a stale **used indirect** one — hard-fails the gate; graph-only modules the build never compiles are ignored. Indirect deps that are MVS-capped (a transitive can't exceed what its requiring module pins) are reported as a non-blocking advisory rather than failing on the unfixable. Set `LINTMAX_SKIP_STALENESS=1` to disable.
+
 ## Install
 
 ```
