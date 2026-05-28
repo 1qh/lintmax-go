@@ -16,7 +16,7 @@ import (
 
 const (
 	httpTimeout     = 15 * time.Second
-	toleranceWindow = 7 * 24 * time.Hour //nolint:mnd // tolerance window: skip releases <7d old to avoid racing registries
+	toleranceWindow = 0 * time.Hour //nolint:mnd // realtime: enforce latest the instant a release publishes; opt into a buffer via LINTMAX_STALENESS_TOLERANCE_DAYS
 	hoursPerDay     = 24
 	maxIssueRender  = 50
 	envToken        = "GITHUB_TOKEN" //nolint:gosec // env var name, not a credential
