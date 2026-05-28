@@ -479,8 +479,8 @@ func depNotes(stale []staleness.Issue, staleErr, dupErr error, dupIssues []dupco
 		notes = append(notes, direct)
 	}
 	if rendered := dupconst.Format(dupIssues); rendered != "" {
-		notes = append(notes, fmt.Sprintf("%d duplicate-value const group(s) (collapse to one):\n%s",
-			len(dupIssues), rendered))
+		fmt.Fprintf(os.Stderr, "advisory: %d duplicate-value const group(s) (collapse to one):\n%s\n",
+			len(dupIssues), rendered)
 	}
 	return notes
 }

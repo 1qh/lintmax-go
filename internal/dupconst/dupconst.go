@@ -57,7 +57,7 @@ func scanPkg(pkg *types.Package) []Issue {
 		if len(v) < minValueLen {
 			continue
 		}
-		byVal[v] = append(byVal[v], name)
+		byVal[c.Type().String()+"\x00"+v] = append(byVal[c.Type().String()+"\x00"+v], name)
 	}
 	var out []Issue
 	for v, names := range byVal {
@@ -65,7 +65,11 @@ func scanPkg(pkg *types.Package) []Issue {
 			continue
 		}
 		slices.Sort(names)
-		out = append(out, Issue{Value: v, Pkg: pkg.Name(), Names: names})
+		dispV := v
+		if _, after, ok := strings.Cut(v, "\x00"); ok {
+			dispV = after
+		}
+		out = append(out, Issue{Value: dispV, Pkg: pkg.Name(), Names: names})
 	}
 	return out
 }
