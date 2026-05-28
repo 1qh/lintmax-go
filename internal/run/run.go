@@ -20,6 +20,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/diag"
 	"github.com/1qh/lintmax-go/internal/dupconst"
+	"github.com/1qh/lintmax-go/internal/floatdiv"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -451,6 +452,13 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 			return dupconst.Scan(g.ctx, ".")
 		})
 	})
+	var fdivIssues []floatdiv.Issue
+	var fdivErr error
+	topWG.Go(func() {
+		fdivIssues, fdivErr = timePhase(g.timing, "floatdiv", func() ([]floatdiv.Issue, error) {
+			return floatdiv.Scan(g.ctx, ".")
+		})
+	})
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, cmdTest, func() ([]byte, bool) {
@@ -463,6 +471,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 		notes = append(notes, "go test:\n"+tailLines(testOut, tailTest))
 	}
 	notes = append(notes, depNotes(stale, staleErr, dupErr, dupIssues)...)
+	notes = append(notes, fdivNotes(fdivErr, fdivIssues)...)
 	notes = append(notes, deepNotes...)
 	return diags, notes
 }
@@ -481,6 +490,18 @@ func depNotes(stale []staleness.Issue, staleErr, dupErr error, dupIssues []dupco
 	if rendered := dupconst.Format(dupIssues); rendered != "" {
 		fmt.Fprintf(os.Stderr, "advisory: %d duplicate-value const group(s) (collapse to one):\n%s\n",
 			len(dupIssues), rendered)
+	}
+	return notes
+}
+
+func fdivNotes(fdivErr error, fdivIssues []floatdiv.Issue) []string {
+	var notes []string
+	if fdivErr != nil {
+		notes = append(notes, "floatdiv scan: "+fdivErr.Error())
+	}
+	if rendered := floatdiv.Format(fdivIssues); rendered != "" {
+		fmt.Fprintf(os.Stderr, "advisory: %d unguarded float-division site(s) (NaN/Inf risk on empty input):\n%s\n",
+			len(fdivIssues), rendered)
 	}
 	return notes
 }
