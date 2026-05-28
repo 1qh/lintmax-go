@@ -47,9 +47,6 @@ func Scan(ctx context.Context, root string) ([]Issue, error) {
 }
 
 func scanFile(p *packages.Package, f *ast.File) []Issue {
-	if isTestFile(p, f) {
-		return nil
-	}
 	var out []Issue
 	ast.Inspect(f, func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
@@ -175,10 +172,6 @@ func isFloat(t types.Type) bool {
 	}
 	b, ok := t.Underlying().(*types.Basic)
 	return ok && b.Info()&types.IsFloat != 0
-}
-
-func isTestFile(p *packages.Package, f *ast.File) bool {
-	return strings.HasSuffix(p.Fset.Position(f.Pos()).Filename, "_test.go")
 }
 
 func render(e ast.Expr) string {
