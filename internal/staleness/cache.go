@@ -14,6 +14,8 @@ const (
 	cacheTTL      = 24 * time.Hour
 	cacheDirPerm  = 0o750
 	cacheFilePerm = 0o600
+	cacheAppDir   = "lintmax-go"
+	cacheSubDir   = "staleness"
 )
 
 type cachedRelease struct {
@@ -27,7 +29,7 @@ func cachePath(action string) string {
 		return ""
 	}
 	safe := strings.ReplaceAll(action, "/", "_")
-	return filepath.Join(dir, "lintmax-go", "staleness", safe+".json")
+	return filepath.Join(dir, cacheAppDir, cacheSubDir, safe+".json")
 }
 
 func readCachedRelease(action string) (*ghRelease, bool) {
@@ -66,7 +68,7 @@ func goModCachePath(key string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "lintmax-go", "staleness", "gomod-"+key+".json")
+	return filepath.Join(dir, cacheAppDir, cacheSubDir, "gomod-"+key+".json")
 }
 
 type cachedGoMod struct {

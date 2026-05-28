@@ -6,12 +6,14 @@ import (
 	"github.com/1qh/lintmax-go/internal/transform"
 )
 
+const fmtGotWant = "got %q want %q"
+
 func TestStripCommentsRemovesLineAndBlock(t *testing.T) {
 	t.Parallel()
 	src := []byte("package x\n\n// a doc comment\nfunc A() {} /* trailing */\n")
 	got := string(transform.StripComments(src))
 	if want := "package x\n\nfunc A() {} \n"; got != want {
-		t.Fatalf("got %q want %q", got, want)
+		t.Fatalf(fmtGotWant, got, want)
 	}
 }
 
@@ -35,7 +37,7 @@ func TestCompactCollapsesTopLevelBlanks(t *testing.T) {
 	t.Parallel()
 	src := []byte("package x\n\n\n\nvar a = 1\n")
 	if want, got := "package x\n\nvar a = 1\n", string(transform.Compact(src)); got != want {
-		t.Fatalf("got %q want %q", got, want)
+		t.Fatalf(fmtGotWant, got, want)
 	}
 }
 

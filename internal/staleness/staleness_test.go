@@ -10,6 +10,11 @@ import (
 	"github.com/1qh/lintmax-go/internal/staleness"
 )
 
+const (
+	envSkipStaleness = "LINTMAX_SKIP_STALENESS"
+	fmtScanErr       = "Scan: %v"
+)
+
 func TestNormalizeMajorStripsMinorPatch(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
@@ -28,10 +33,10 @@ func TestNormalizeMajorStripsMinorPatch(t *testing.T) {
 }
 
 func TestScanReturnsNilWhenSkipped(t *testing.T) {
-	t.Setenv("LINTMAX_SKIP_STALENESS", "1")
+	t.Setenv(envSkipStaleness, "1")
 	out, err := staleness.Scan(context.Background(), ".") //nolint:forbidigo // reason: bootstrap test harness ctx
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf(fmtScanErr, err)
 	}
 	if out != nil {
 		t.Fatalf("expected nil, got %v", out)
@@ -43,7 +48,7 @@ func TestScanActionsNoWorkflowsIsEmpty(t *testing.T) {
 	dir := t.TempDir()
 	out, err := staleness.Scan(context.Background(), dir) //nolint:forbidigo // reason: bootstrap test harness ctx
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf(fmtScanErr, err)
 	}
 	if len(out) != 0 {
 		t.Fatalf("want empty, got %v", out)
@@ -52,7 +57,7 @@ func TestScanActionsNoWorkflowsIsEmpty(t *testing.T) {
 
 func TestScanActionsParsesPinsFromYAML(t *testing.T) {
 	dir := writeFixtureWorkflow(t)
-	t.Setenv("LINTMAX_SKIP_STALENESS", "1")
+	t.Setenv(envSkipStaleness, "1")
 	_, _ = staleness.Scan(context.Background(), dir) //nolint:errcheck,forbidigo // reason: smoke test; bootstrap test ctx
 }
 

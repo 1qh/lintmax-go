@@ -25,6 +25,7 @@ const (
 	exitOK    = 0
 	exitFail  = 1
 	exitUsage = 2
+	cmdFix    = "fix"
 )
 
 func main() { os.Exit(realMain(os.Args[1:])) }
@@ -66,8 +67,8 @@ func realMain(args []string) int {
 		return report(run.Init())
 	case "rules":
 		return rulesCmd(ctx)
-	case "fix", "check":
-		return gateCmd(ctx, args[0] == "fix")
+	case cmdFix, "check":
+		return gateCmd(ctx, args[0] == cmdFix)
 	default:
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage

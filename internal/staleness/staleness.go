@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	httpTimeout     = 15 * time.Second
-	toleranceWindow = 0 * time.Hour //nolint:mnd // realtime: enforce latest the instant a release publishes; opt into a buffer via LINTMAX_STALENESS_TOLERANCE_DAYS
+	httpTimeout = 15 * time.Second
+
+	toleranceWindow = 0 * time.Hour
 	hoursPerDay     = 24
 	maxIssueRender  = 50
 	envToken        = "GITHUB_TOKEN" //nolint:gosec // env var name, not a credential

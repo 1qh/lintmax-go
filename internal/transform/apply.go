@@ -10,7 +10,10 @@ import (
 	"sync"
 )
 
-const goExt = ".go"
+const (
+	goExt      = ".go"
+	goFilePerm = 0o600
+)
 
 //nolint:gochecknoglobals // pkg-data: walk-skip set
 var skipDirs = map[string]bool{".git": true, "vendor": true, "testdata": true, "node_modules": true}
@@ -80,7 +83,7 @@ func processFile(path string, write bool) (bool, error) {
 	if !write {
 		return true, nil
 	}
-	writeErr := os.WriteFile(path, out, 0o600) //nolint:gosec // walked .go path under root, not user input
+	writeErr := os.WriteFile(path, out, goFilePerm) //nolint:gosec // walked .go path under root, not user input
 	if writeErr != nil {
 		return true, fmt.Errorf("write %s: %w", path, writeErr)
 	}

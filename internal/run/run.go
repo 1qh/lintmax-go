@@ -28,11 +28,24 @@ import (
 )
 
 const (
-	emptyArg   = ""
-	goCmd      = "go"
-	configMode = 0o600
-	dirPerm    = 0o755
-	refreshTTL = 24 * time.Hour
+	emptyArg     = ""
+	goCmd        = "go"
+	configMode   = 0o600
+	dirPerm      = 0o755
+	refreshTTL   = 24 * time.Hour
+	cmdTest      = "test"
+	binSubdir    = "bin"
+	cmdInstall   = "install"
+	golangciBin  = "golangci-lint"
+	allPackages  = "./..."
+	transformErr = "transform: %w"
+	phaseFmt     = "  %-12s %v\n"
+	tailDefault  = 15
+	tailTest     = 20
+	minParallel  = 2
+	cfgFlag      = "--config"
+	binDeadcode  = "deadcode"
+	binNilaway   = "nilaway"
 )
 
 var ErrGate = errors.New("gate failed")
@@ -42,13 +55,13 @@ func binDir() string {
 		return v
 	}
 	if v := os.Getenv("GOPATH"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
-		return filepath.Join(v, "bin")
+		return filepath.Join(v, binSubdir)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = emptyArg
 	}
-	return filepath.Join(home, goCmd, "bin")
+	return filepath.Join(home, goCmd, binSubdir)
 }
 
 func bin(name string) string {
@@ -112,7 +125,7 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	var wg sync.WaitGroup
 	for _, tool := range tools.All {
 		wg.Go(func() {
-			cmd := exec.CommandContext(ctx, goCmd, "install", tool.Pkg+"@latest") //nolint:gosec // static registry paths
+			cmd := exec.CommandContext(ctx, goCmd, cmdInstall, tool.Pkg+"@latest") //nolint:gosec // static registry paths
 			var buf bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &buf, &buf
 			err := cmd.Run()
@@ -174,7 +187,7 @@ func tailLines(data []byte, count int) string {
 }
 
 func Upgrade(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, goCmd, "install", version.Self+"@latest") //nolint:gosec // fixed self path
+	cmd := exec.CommandContext(ctx, goCmd, cmdInstall, version.Self+"@latest") //nolint:gosec // fixed self path
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()
@@ -230,7 +243,7 @@ func Rules(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, bin("golangci-lint"), "linters", "--config", cfg) //nolint:gosec // fixed invocation
+	cmd := exec.CommandContext(ctx, bin(golangciBin), "linters", cfgFlag, cfg) //nolint:gosec // fixed invocation
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	runErr := cmd.Run()
 	if runErr != nil {
@@ -243,13 +256,13 @@ func transformGate(fix bool) ([]string, error) {
 	if fix {
 		_, err := transform.Apply(".")
 		if err != nil {
-			return nil, fmt.Errorf("transform: %w", err)
+			return nil, fmt.Errorf(transformErr, err)
 		}
 		return nil, nil
 	}
 	changed, err := transform.Check(".")
 	if err != nil {
-		return nil, fmt.Errorf("transform: %w", err)
+		return nil, fmt.Errorf(transformErr, err)
 	}
 	return changed, nil
 }
@@ -259,7 +272,7 @@ func deepScan(ctx context.Context) []string {
 		name string
 		args []string
 	}{
-		{name: "govulncheck", args: []string{"./..."}},
+		{name: "govulncheck", args: []string{allPackages}},
 		{name: "osv-scanner", args: []string{"scan", "source", "-r", "."}},
 		{name: "capslock", args: []string{"-packages", "./..."}},
 	}
@@ -269,7 +282,7 @@ func deepScan(ctx context.Context) []string {
 		wg.Go(func() {
 			out, ok := runCombined(ctx, bin(spec.name), spec.args...)
 			if !ok {
-				results[idx] = spec.name + ":\n" + tailLines(out, 15)
+				results[idx] = spec.name + ":\n" + tailLines(out, tailDefault)
 			}
 		})
 	}
@@ -290,7 +303,7 @@ type collectResult struct {
 
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
 	gcArgs := []string{
-		"run", "--config", cfg,
+		"run", cfgFlag, cfg,
 		"--concurrency=" + strconv.Itoa(linterConcurrency()),
 		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
 	}
@@ -300,21 +313,21 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		gcOut, gcOK := runOut(ctx, bin("golangci-lint"), gcArgs...)
+		gcOut, gcOK := runOut(ctx, bin(golangciBin), gcArgs...)
 		gcDiags := diag.ParseGolangci(gcOut)
 		out := collectResult{diags: gcDiags}
 		if !gcOK && len(gcDiags) == 0 {
-			out.notes = []string{"golangci-lint:\n" + tailLines(gcOut, 15)}
+			out.notes = []string{"golangci-lint:\n" + tailLines(gcOut, tailDefault)}
 		}
 		results <- out
 	})
 	wg.Go(func() {
-		dcOut, _ := runCombined(ctx, bin("deadcode"), "-test", "./...")
-		results <- collectResult{diags: diag.ParseLines(dcOut, "deadcode")}
+		dcOut, _ := runCombined(ctx, bin(binDeadcode), "-test", allPackages)
+		results <- collectResult{diags: diag.ParseLines(dcOut, binDeadcode)}
 	})
 	wg.Go(func() {
-		nilOut, _ := runOut(ctx, bin("nilaway"), "-json", "./...")
-		results <- collectResult{diags: diag.ParseAnalysis(nilOut, "nilaway")}
+		nilOut, _ := runOut(ctx, bin(binNilaway), "-json", allPackages)
+		results <- collectResult{diags: diag.ParseAnalysis(nilOut, binNilaway)}
 	})
 	wg.Wait()
 	close(results)
@@ -432,63 +445,79 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 		deepNotes = timePhase3(g.timing, "vulnScan", func() []string { return deepScan(g.ctx) })
 	})
 	var dupIssues []dupconst.Issue
+	var dupErr error
 	topWG.Go(func() {
-		dupIssues, _ = timePhase(g.timing, "dupconst", func() ([]dupconst.Issue, error) {
+		dupIssues, dupErr = timePhase(g.timing, "dupconst", func() ([]dupconst.Issue, error) {
 			return dupconst.Scan(g.ctx, ".")
 		})
 	})
 	if !skipTest {
 		topWG.Go(func() {
-			testOut, testOK = timePhase2(g.timing, "test", func() ([]byte, bool) {
+			testOut, testOK = timePhase2(g.timing, cmdTest, func() ([]byte, bool) {
 				return runCombined(g.ctx, goCmd, testArgs()...)
 			})
 		})
 	}
 	topWG.Wait()
 	if !testOK {
-		notes = append(notes, "go test:\n"+tailLines(testOut, 20))
+		notes = append(notes, "go test:\n"+tailLines(testOut, tailTest))
 	}
+	notes = append(notes, depNotes(stale, staleErr, dupErr, dupIssues)...)
+	notes = append(notes, deepNotes...)
+	return diags, notes
+}
+
+func depNotes(stale []staleness.Issue, staleErr, dupErr error, dupIssues []dupconst.Issue) []string {
+	var notes []string
 	if staleErr != nil {
 		notes = append(notes, "staleness scan: "+staleErr.Error())
 	}
-	if len(stale) > 0 {
-		var direct, indirect []staleness.Issue
-		for _, s := range stale {
-			if strings.Contains(s.Source, "indirect") {
-				indirect = append(indirect, s)
-			} else {
-				direct = append(direct, s)
-			}
-		}
-		if len(indirect) > 0 {
-			fmt.Fprintf(os.Stderr, "advisory: %d indirect dep(s) behind latest (MVS-capped — bump the requiring dep to move):\n%s\n",
-				len(indirect), staleness.Format(indirect))
-		}
-		if len(direct) > 0 {
-			notes = append(notes, fmt.Sprintf("%d direct dep(s) stale (bump or pin):\n%s", len(direct), staleness.Format(direct)))
-		}
+	if dupErr != nil {
+		notes = append(notes, "dupconst scan: "+dupErr.Error())
+	}
+	if direct := staleNote(stale); direct != "" {
+		notes = append(notes, direct)
 	}
 	if rendered := dupconst.Format(dupIssues); rendered != "" {
 		notes = append(notes, fmt.Sprintf("%d duplicate-value const group(s) (collapse to one):\n%s",
 			len(dupIssues), rendered))
 	}
-	notes = append(notes, deepNotes...)
-	return diags, notes
+	return notes
+}
+
+func staleNote(stale []staleness.Issue) string {
+	var direct, indirect []staleness.Issue
+	for _, s := range stale {
+		if strings.Contains(s.Source, "indirect") {
+			indirect = append(indirect, s)
+		} else {
+			direct = append(direct, s)
+		}
+	}
+	if len(indirect) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"advisory: %d indirect dep(s) behind latest (MVS-capped — bump the requiring dep to move):\n%s\n",
+			len(indirect), staleness.Format(indirect))
+	}
+	if len(direct) > 0 {
+		return fmt.Sprintf("%d direct dep(s) stale (bump or pin):\n%s", len(direct), staleness.Format(direct))
+	}
+	return ""
 }
 
 func testArgs() []string {
 	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
-	args := []string{"test", "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
+	args := []string{cmdTest, "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
 	}
-	return append(args, "./...")
+	return append(args, allPackages)
 }
 
 func linterConcurrency() int {
 	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel test phase
-	if n < 2 {                //nolint:mnd // minimum useful parallelism
-		return 2
+	if n < minParallel {
+		return minParallel
 	}
 	return n
 }
@@ -498,8 +527,8 @@ func testConcurrency(noRace bool) int {
 		return runtime.NumCPU()
 	}
 	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel collect phase
-	if n < 2 {                //nolint:mnd // minimum useful parallelism
-		return 2
+	if n < minParallel {
+		return minParallel
 	}
 	return n
 }
@@ -567,7 +596,7 @@ func timePhase[T any](on bool, phase string, fn func() (T, error)) (T, error) {
 	}
 	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out, err := fn()
-	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out, err
 }
 
@@ -578,7 +607,7 @@ func timePhase2[A, B any](on bool, phase string, fn func() (A, B)) (A, B) {
 	}
 	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	a, b := fn()
-	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return a, b
 }
 
@@ -589,6 +618,6 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	}
 	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
 	out := fn()
-	fmt.Fprintf(os.Stderr, "  %-12s %v\n", phase, time.Since(start).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out
 }

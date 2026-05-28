@@ -101,10 +101,11 @@ func ParseAnalysis(raw []byte, linter string) []Diagnostic {
 }
 
 func ParseLines(raw []byte, linter string) []Diagnostic {
+	const lineParts = 4
 	var diags []Diagnostic
 	for line := range strings.SplitSeq(string(raw), "\n") {
-		parts := strings.SplitN(line, ":", 4)
-		if len(parts) < 4 {
+		parts := strings.SplitN(line, ":", lineParts)
+		if len(parts) < lineParts {
 			continue
 		}
 		num, err := strconv.Atoi(parts[1])
@@ -117,8 +118,9 @@ func ParseLines(raw []byte, linter string) []Diagnostic {
 }
 
 func splitPosn(posn string) (string, int) {
+	const minPosnParts = 2
 	parts := strings.Split(posn, ":")
-	if len(parts) < 2 {
+	if len(parts) < minPosnParts {
 		return posn, 0
 	}
 	num, err := strconv.Atoi(parts[1])
