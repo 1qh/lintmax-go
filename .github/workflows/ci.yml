@@ -27,7 +27,7 @@ jobs:
       - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
       - name: "dogfood — check (every linter + nilaway + deadcode + govulncheck + osv-scanner + capslock + staleness all always-on)"
-        run: "$HOME/go/bin/lintmax-go" check
+        run: '"$HOME/go/bin/lintmax-go" check'
       - name: cancel sibling jobs on failure
         if: failure()
         env:
