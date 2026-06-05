@@ -467,6 +467,10 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 			return idiom.Scan(g.ctx, ".")
 		})
 	})
+	var scriptIssues []string
+	topWG.Go(func() {
+		scriptIssues, _ = idiom.ScanScripts(g.ctx, ".")
+	})
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, cmdTest, func() ([]byte, bool) {
@@ -481,6 +485,9 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	notes = append(notes, depNotes(stale, staleErr, dupErr, dupIssues)...)
 	notes = append(notes, fdivNotes(fdivErr, fdivIssues)...)
 	notes = append(notes, idiomNotes(idiomErr, idiomIssues)...)
+	if r := idiom.FormatScripts(scriptIssues); r != "" {
+		notes = append(notes, r)
+	}
 	notes = append(notes, deepNotes...)
 	return diags, notes
 }

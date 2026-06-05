@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -71,4 +72,32 @@ func Format(issues []Issue) string {
 	}
 	return fmt.Sprintf("hash-gibberish identifiers (rename to self-documenting names): %s",
 		strings.Join(names, ", "))
+}
+
+func ScanScripts(ctx context.Context, root string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-s")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, nil
+	}
+	var bad []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || !strings.HasSuffix(fields[3], ".sh") {
+			continue
+		}
+		if !strings.HasPrefix(line, "100755") {
+			bad = append(bad, fields[3])
+		}
+	}
+	sort.Strings(bad)
+	return bad, nil
+}
+
+func FormatScripts(bad []string) string {
+	if len(bad) == 0 {
+		return ""
+	}
+	return "shell scripts not executable (git mode must be 100755 — run `chmod +x` and `git update-index --chmod=+x`): " +
+		strings.Join(bad, ", ")
 }
