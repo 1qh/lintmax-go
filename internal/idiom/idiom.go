@@ -29,7 +29,7 @@ func Scan(_ context.Context, root string) ([]Issue, error) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 		src, rerr := os.ReadFile(path) //nolint:gosec // reason: path is a .go file from a repo walk, not user input
