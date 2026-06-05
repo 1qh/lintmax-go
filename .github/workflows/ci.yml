@@ -27,9 +27,26 @@ jobs:
       - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
       - name: "dogfood — check (every linter + nilaway + deadcode + govulncheck + osv-scanner + capslock + staleness all always-on)"
-        run: $HOME/go/bin/lintmax-go check
+        run: "$HOME/go/bin/lintmax-go" check
       - name: cancel sibling jobs on failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
+  prune-history:
+    needs: [shell, dogfood]
+    runs-on: ${{ vars.RUNNER_LABEL }}
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - name: prune all prior CI runs (single-present-run discipline)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEEP_RUN_ID: ${{ github.run_id }}
+        run: .github/scripts/prune-ci-runs.sh
