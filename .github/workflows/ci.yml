@@ -40,6 +40,8 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: wipe workspace (sparse-checkout leakage between jobs on shared runner)
+        run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
       - uses: actions/checkout@v6
         with:
           sparse-checkout: .github/scripts
