@@ -21,6 +21,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/diag"
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
+	"github.com/1qh/lintmax-go/internal/idiom"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -459,6 +460,13 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 			return floatdiv.Scan(g.ctx, ".")
 		})
 	})
+	var idiomIssues []idiom.Issue
+	var idiomErr error
+	topWG.Go(func() {
+		idiomIssues, idiomErr = timePhase(g.timing, "idiom", func() ([]idiom.Issue, error) {
+			return idiom.Scan(g.ctx, ".")
+		})
+	})
 	if !skipTest {
 		topWG.Go(func() {
 			testOut, testOK = timePhase2(g.timing, cmdTest, func() ([]byte, bool) {
@@ -472,6 +480,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	}
 	notes = append(notes, depNotes(stale, staleErr, dupErr, dupIssues)...)
 	notes = append(notes, fdivNotes(fdivErr, fdivIssues)...)
+	notes = append(notes, idiomNotes(idiomErr, idiomIssues)...)
 	notes = append(notes, deepNotes...)
 	return diags, notes
 }
@@ -641,4 +650,15 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	out := fn()
 	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out
+}
+
+func idiomNotes(idiomErr error, issues []idiom.Issue) []string {
+	var notes []string
+	if idiomErr != nil {
+		notes = append(notes, "idiom scan: "+idiomErr.Error())
+	}
+	if rendered := idiom.Format(issues); rendered != "" {
+		notes = append(notes, rendered)
+	}
+	return notes
 }
