@@ -469,7 +469,10 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	})
 	var scriptIssues []string
 	topWG.Go(func() {
-		scriptIssues, _ = idiom.ScanScripts(g.ctx, ".")
+		issues, serr := idiom.ScanScripts(g.ctx, ".")
+		if serr == nil {
+			scriptIssues = issues
+		}
 	})
 	if !skipTest {
 		topWG.Go(func() {

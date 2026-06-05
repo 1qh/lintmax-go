@@ -15,6 +15,11 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+const (
+	fnLen     = "len"
+	fnLenCall = "len("
+)
+
 const loadMode = packages.NeedTypes |
 	packages.NeedSyntax |
 	packages.NeedTypesInfo |
@@ -28,7 +33,7 @@ type Issue struct {
 }
 
 func Scan(ctx context.Context, root string) ([]Issue, error) {
-	cfg := &packages.Config{Mode: loadMode, Dir: root, Context: ctx} //nolint:exhaustruct // optional config fields
+	cfg := &packages.Config{Mode: loadMode, Dir: root, Context: ctx}
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		return nil, fmt.Errorf("floatdiv load packages: %w", err)
@@ -79,14 +84,14 @@ func riskyDivision(
 ) (Issue, bool) {
 	bin, ok := n.(*ast.BinaryExpr)
 	if !ok || bin.Op != token.QUO || !isFloat(p.TypesInfo.TypeOf(bin)) {
-		return Issue{}, false //nolint:exhaustruct // not a finding
+		return Issue{}, false
 	}
 	den, risky := riskyDenominator(bin.Y)
 	if !risky {
-		return Issue{}, false //nolint:exhaustruct // not a finding
+		return Issue{}, false
 	}
 	if _, found := guarded[den]; found {
-		return Issue{}, false //nolint:exhaustruct // guarded
+		return Issue{}, false
 	}
 	return Issue{Pos: p.Fset.Position(bin.Pos()).String(), Operand: den, Func: fn.Name.Name}, true
 }
@@ -123,10 +128,10 @@ func lenCallText(e ast.Expr) (string, bool) {
 		return "", false
 	}
 	id, ok := call.Fun.(*ast.Ident)
-	if !ok || id.Name != "len" {
+	if !ok || id.Name != fnLen {
 		return "", false
 	}
-	return "len(" + render(call.Args[0]) + ")", true
+	return fnLenCall + render(call.Args[0]) + ")", true
 }
 
 func guardedOperands(body *ast.BlockStmt) map[string]struct{} {
@@ -156,8 +161,8 @@ func isComparison(op token.Token) bool {
 func markGuard(e ast.Expr, guarded map[string]struct{}) {
 	if call, ok := e.(*ast.CallExpr); ok {
 		id, idok := call.Fun.(*ast.Ident)
-		if idok && id.Name == "len" && len(call.Args) == 1 {
-			guarded["len("+render(call.Args[0])+")"] = struct{}{}
+		if idok && id.Name == fnLen && len(call.Args) == 1 {
+			guarded[fnLenCall+render(call.Args[0])+")"] = struct{}{}
 		}
 		return
 	}
