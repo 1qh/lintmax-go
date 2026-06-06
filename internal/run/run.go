@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -8,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -157,11 +160,58 @@ func writeConfig() (string, error) {
 		return emptyArg, fmt.Errorf("temp dir: %w", err)
 	}
 	path := filepath.Join(dir, ".golangci.yml")
-	err = os.WriteFile(path, config.GolangCI, configMode)
+	cfg := string(config.GolangCI)
+	if extra := generatedExclusions(); extra != "" {
+		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
+	}
+	err = os.WriteFile(path, []byte(cfg), configMode)
 	if err != nil {
 		return emptyArg, fmt.Errorf("write config: %w", err)
 	}
 	return path, nil
+}
+
+var genHeaderRe = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
+
+const (
+	genHeaderScanLines = 10
+	goExt              = ".go"
+)
+
+func isGenerated(path string) bool {
+	f, err := os.Open(path) //nolint:gosec // path from WalkDir over the linted repo
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }() //nolint:errcheck // close in defer on a read-only file
+	sc := bufio.NewScanner(f)
+	for i := 0; i < genHeaderScanLines && sc.Scan(); i++ {
+		if genHeaderRe.MatchString(sc.Text()) {
+			return true
+		}
+	}
+	return false
+}
+
+func generatedExclusions() string {
+	var b strings.Builder
+	walk := func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // skip unreadable entries, keep walking
+		}
+		if d.IsDir() || !strings.HasSuffix(p, goExt) {
+			return nil
+		}
+		if isGenerated(p) {
+			b.WriteString("      - '^" + regexp.QuoteMeta(strings.TrimPrefix(p, "./")) + "$'\n")
+		}
+		return nil
+	}
+	err := filepath.WalkDir(".", walk)
+	if err != nil {
+		return b.String()
+	}
+	return b.String()
 }
 
 func runOut(ctx context.Context, name string, args ...string) ([]byte, bool) {
