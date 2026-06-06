@@ -164,6 +164,11 @@ linters:
     # turn OFF golangci's silent default suppressions — report everything.
     generated: lax
     presets: []
+    # codegen output (sqlc / templ): committed, regenerated, never hand-edited — deterministic
+    # path exclusion so findings never depend on golangci's generated-file-filter cache state.
+    paths:
+      - '\.sql\.go$'
+      - '_templ\.go$'
     rules:
       # EARNED: CLI binaries (cli/, cmd/) ARE the bootstrap layer; fmt.Print to stdout + os.Getenv
       # for raw flags ARE the legitimate exception. Strictness applies to library code only.
