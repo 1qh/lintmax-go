@@ -353,7 +353,23 @@ type collectResult struct {
 	notes []string
 }
 
+func inCI() bool {
+	return os.Getenv("GITHUB_ACTIONS") != emptyArg || os.Getenv("CI") != emptyArg //nolint:forbidigo // bootstrap env read
+}
+
+func isolateCICache() {
+	if !inCI() {
+		return
+	}
+	dir, err := os.MkdirTemp(emptyArg, "lintmax-gocache")
+	if err != nil {
+		return
+	}
+	_ = os.Setenv("GOLANGCI_LINT_CACHE", dir) //nolint:errcheck,forbidigo // bootstrap cache isolation
+}
+
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
+	isolateCICache()
 	gcArgs := []string{
 		"run", cfgFlag, cfg,
 		"--concurrency=" + strconv.Itoa(linterConcurrency()),
