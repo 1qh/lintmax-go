@@ -203,7 +203,7 @@ func generatedExclusions() string {
 			return nil
 		}
 		if isGenerated(p) {
-			b.WriteString("      - '^" + regexp.QuoteMeta(strings.TrimPrefix(p, "./")) + "$'\n")
+			b.WriteString("      - '(^|/)" + regexp.QuoteMeta(strings.TrimPrefix(p, "./")) + "$'\n")
 		}
 		return nil
 	}
