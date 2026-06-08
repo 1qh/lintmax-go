@@ -19,3 +19,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: goreleaser release --clean
+      - name: prune to single latest release (single-present-release discipline)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/prune-old-releases.sh
