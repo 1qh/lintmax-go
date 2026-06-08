@@ -12,9 +12,11 @@ jobs:
   shell:
     runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
+      - name: wipe workspace (leftover-file leakage between runs on shared runner)
+        run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
       - uses: actions/checkout@v6
-      - name: shellcheck install.sh + any future shell scripts
-        run: shellcheck install.sh
+      - name: shellcheck every shell script in the repo
+        run: shellcheck install.sh .github/scripts/*.sh
       - name: cancel sibling jobs on failure
         if: failure()
         env:
@@ -23,6 +25,8 @@ jobs:
   dogfood:
     runs-on: ${{ vars.RUNNER_LABEL }}
     steps:
+      - name: wipe workspace (leftover-file leakage between runs on shared runner)
+        run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
       - uses: actions/checkout@v6
       - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
