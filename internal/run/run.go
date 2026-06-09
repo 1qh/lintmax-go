@@ -183,7 +183,7 @@ func exhaustructInclude() string {
 	if mod == emptyArg {
 		return emptyArg
 	}
-	return "      include:\n        - '^" + regexp.QuoteMeta(mod) + "/.*'\n"
+	return "      include:\n        - '^" + regexp.QuoteMeta(mod) + "(/.*)?\\.[^./]+$'\n"
 }
 
 var genHeaderRe = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
