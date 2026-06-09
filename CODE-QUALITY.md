@@ -10,14 +10,11 @@ The strictness contract lintmax-go enforces, and the rules that govern it.
 4. **Fix the code, don't suppress.** When a rule fires, the first move is to satisfy it. Suppression (`//nolint:rule // reason`) is for genuinely unavoidable, isolated cases and always carries a reason — `nolintlint` enforces that.
 5. **Disable nothing up front.** The disable list starts empty. Each entry is *earned* by a concrete conflict found on real code, and documented with its reason in `internal/config/golangci.yml`.
 
-## Speed tiers
+## One exhaustive gate
 
-| Tier | Command | Contents |
-| --- | --- | --- |
-| fast | `lintmax-go fix` / `check` | comments+compact, golangci (all), nilaway, deadcode, `go test -race -shuffle` |
-| deep | `… --deep` | adds govulncheck, osv-scanner, capslock |
+`lintmax-go fix` (the default) and `lintmax-go check` (CI, read-only) run the identical, complete scanner set every time — nothing is held back for a separate tier:
 
-Fast runs every save; deep runs pre-merge. Nothing escapes the merge gate.
+comments+compact, golangci (all), nilaway, deadcode, `go test -race -shuffle`, govulncheck, osv-scanner, capslock, plus the in-house dupconst / floatdiv / idiom analyzers and the staleness scan. A clean `check` is skipped via the green-tree-hash cache when nothing changed (`ok (cached)`); `fix` always runs in full. Nothing escapes the merge gate.
 
 ## How a disable gets earned
 

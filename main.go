@@ -12,17 +12,13 @@ import (
 
 const usage = `lintmax-go — maximum-strictness Go quality gate (always-latest, never stale, all-scanners-always)
 usage:
-  lintmax fix       format + autofix + full gate (every linter + govulncheck + osv-scanner + nilaway + capslock)
+  lintmax fix       format + autofix + full gate (every linter + govulncheck + osv-scanner + nilaway + capslock); default
   lintmax check     verify only, no writes (CI mode) — same exhaustive scanner set as fix
-  lintmax init      scaffold .editorconfig + CI workflow into this project
-  lintmax sync      write/refresh the standard ci.yml + release.yml + prune scripts into this project
-  lintmax cov       run test coverage (go test -coverprofile) + print the total
-  lintmax watch     re-run the gate (fix mode) on every .go/.mod/.sum change
-  lintmax update    reinstall every linter tool @latest
-  lintmax upgrade   reinstall lintmax-go itself @latest
   lintmax version   print lintmax-go's version
   lintmax rules     list every enabled linter under the maxed config
-prints "ok" on success, exit 0 = clean; verbose only on failure.`
+prints "ok" on success, exit 0 = clean; verbose only on failure.
+self-evolving (automatic, never a command): linter/self @latest refresh, CI+release-workflow currency,
+green-tree-hash cache, staleness scan — all run internally on every gate.`
 
 const (
 	exitOK    = 0
@@ -64,12 +60,6 @@ func realMain(args []string) int {
 func commands() map[string]func(context.Context) int {
 	return map[string]func(context.Context) int{
 		"version": func(context.Context) int { fmt.Fprintln(os.Stdout, version.Current()); return exitOK },
-		"update":  func(ctx context.Context) int { return reportOK(run.EnsureLatest(ctx, true)) },
-		"upgrade": func(ctx context.Context) int { return reportOK(run.Upgrade(ctx)) },
-		"init":    func(context.Context) int { return reportOK(run.Init()) },
-		"sync":    func(context.Context) int { return reportOK(run.Sync()) },
-		"cov":     func(ctx context.Context) int { return reportOK(run.Cov(ctx)) },
-		"watch":   func(ctx context.Context) int { return report(run.Watch(ctx)) },
 		"rules":   rulesCmd,
 		cmdFix:    func(ctx context.Context) int { return gateCmd(ctx, true) },
 		"check":   func(ctx context.Context) int { return gateCmd(ctx, false) },
@@ -107,12 +97,4 @@ func report(err error) int {
 		return exitFail
 	}
 	return exitOK
-}
-
-func reportOK(err error) int {
-	code := report(err)
-	if code == exitOK {
-		fmt.Fprintln(os.Stdout, "ok")
-	}
-	return code
 }

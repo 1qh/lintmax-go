@@ -24,10 +24,3 @@ func TestReportNilIsOK(t *testing.T) {
 		t.Fatalf("nil err: got exit %d, want %d", got, exitOK)
 	}
 }
-
-func TestReportOKNilIsOK(t *testing.T) {
-	t.Parallel()
-	if got := reportOK(nil); got != exitOK {
-		t.Fatalf("reportOK nil err: got exit %d, want %d", got, exitOK)
-	}
-}

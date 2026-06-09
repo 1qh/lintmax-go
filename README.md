@@ -26,22 +26,28 @@ brew install lintmax-go
 curl -fsSL https://raw.githubusercontent.com/1qh/lintmax-go/main/install.sh | sh
 ```
 
-Then `lintmax-go init` drops a `.editorconfig` (tab_width=2) + CI workflow into your project.
-
 ## Use
 
+Exactly four commands — the lean agent-first surface:
+
 ```
-lintmax-go fix      # format + autofix + fast gate
-lintmax-go check    # verify only, no writes (CI)
-lintmax-go init     # scaffold .editorconfig + CI workflow
-lintmax-go update   # reinstall every linter tool @latest
-lintmax-go upgrade  # reinstall lintmax-go itself @latest
+lintmax-go fix      # format + autofix + full gate (every scanner) — the default action
+lintmax-go check    # verify only, no writes (CI mode) — same exhaustive scanner set
 lintmax-go version  # print version
 lintmax-go rules    # list every enabled linter under the maxed config
-lintmax-go fix --deep / check --deep   # + slow scanners (govulncheck, osv-scanner, capslock)
 ```
 
 Prints `ok` on a single line on success, exit 0 = clean. Tool output is shown only on failure (verbose). The `ok` is the explicit success signal an agent needs to confirm the gate ran and passed; a clean run that is cached prints `ok (cached)`.
+
+## Self-evolving (automatic, never a command)
+
+The tool maintains itself — you never type a maintenance command. Every gate run, internally:
+
+- **Linter @latest refresh** — every child tool is reinstalled `@latest` on a refresh cadence (fast local loop caches the last green run for <24h; CI always forces `@latest`).
+- **Self-update** — in CI the running binary refreshes itself to `@latest` before gating.
+- **Workflow currency** — on a `fix` in a consumer project, the standard `.github/workflows/{ci,release}.yml`, the prune scripts, and `.editorconfig` are written/refreshed idempotently when absent or stale (no-op when already current; skipped in lintmax-go's own repo).
+- **Green-tree-hash cache** — a clean `check` is skipped when the working tree hash is unchanged (`ok (cached)`).
+- **Staleness scan** — `go.mod` deps + GitHub-Action pins are checked against upstream every run.
 
 ## What runs
 

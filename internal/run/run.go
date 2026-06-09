@@ -52,6 +52,7 @@ const (
 	cfgFlag      = "--config"
 	binDeadcode  = "deadcode"
 	binNilaway   = "nilaway"
+	fileGoMod    = "go.mod"
 )
 
 var ErrGate = errors.New("gate failed")
@@ -174,7 +175,7 @@ func writeConfig() (string, error) {
 }
 
 func exhaustructInclude() string {
-	data, err := os.ReadFile("go.mod")
+	data, err := os.ReadFile(fileGoMod)
 	if err != nil {
 		return emptyArg
 	}
@@ -252,16 +253,14 @@ func tailLines(data []byte, count int) string {
 	return strings.Join(lines, "\n")
 }
 
-func Upgrade(ctx context.Context) error {
+func selfUpdate(ctx context.Context) {
+	if !inCI() {
+		return
+	}
 	cmd := exec.CommandContext(ctx, goCmd, cmdInstall, version.Self+"@latest") //nolint:gosec // fixed self path
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
-	err := cmd.Run()
-	if err != nil {
-		fmt.Fprint(os.Stderr, buf.String())
-		return fmt.Errorf("upgrade: %w", err)
-	}
-	return nil
+	_ = cmd.Run() //nolint:errcheck // best-effort self-refresh; gate proceeds on the running binary
 }
 
 type scaffold struct {
@@ -276,10 +275,8 @@ const (
 	mkdirErrFmt    = "mkdir %s: %w"
 	writeErrFmt    = "write %s: %w"
 	shExt          = ".sh"
-	statusExists   = "exists "
-	statusCreated  = "created"
-	statusSynced   = "synced "
 	ciWorkflowPath = "ci.yml"
+	selfModule     = "github.com/1qh/lintmax-go"
 )
 
 func writeFile(item scaffold) error {
@@ -298,35 +295,38 @@ func writeFile(item scaffold) error {
 	return nil
 }
 
-func writeIfAbsent(item scaffold) (bool, error) {
-	_, err := os.Stat(item.path)
-	if err == nil {
-		return false, nil
+func workflowScaffolds() []scaffold {
+	dirScripts := filepath.Join(dirGithub, "scripts")
+	dirFlows := filepath.Join(dirGithub, dirWorkflows)
+	return []scaffold{
+		{path: fileEditorCfg, data: config.EditorConfig},
+		{path: filepath.Join(dirFlows, ciWorkflowPath), data: config.ConsumerCI},
+		{path: filepath.Join(dirFlows, "release.yml"), data: config.ConsumerRelease},
+		{path: filepath.Join(dirScripts, "prune-ci-runs.sh"), data: config.PruneCIRuns},
+		{path: filepath.Join(dirScripts, "prune-old-releases.sh"), data: config.PruneOldReleases},
 	}
-	wErr := writeFile(item)
-	if wErr != nil {
-		return false, wErr
-	}
-	return true, nil
 }
 
-func Init() error {
-	items := []scaffold{
-		{path: fileEditorCfg, data: config.EditorConfig},
-		{path: filepath.Join(dirGithub, dirWorkflows, ciWorkflowPath), data: config.ConsumerCI},
+func syncWorkflows() {
+	data, err := os.ReadFile(fileGoMod)
+	if err != nil {
+		return
 	}
-	for _, item := range items {
-		wrote, err := writeIfAbsent(item)
-		if err != nil {
-			return err
-		}
-		status := statusExists
-		if wrote {
-			status = statusCreated
-		}
-		fmt.Fprintf(os.Stderr, "%s %s\n", status, item.path)
+	if modfile.ModulePath(data) == selfModule {
+		return
 	}
-	return nil
+	for _, item := range workflowScaffolds() {
+		existing, rErr := os.ReadFile(item.path)
+		if rErr == nil && bytes.Equal(existing, item.data) {
+			continue
+		}
+		wErr := writeFile(item)
+		if wErr != nil {
+			fmt.Fprintln(os.Stderr, "lintmax-go: workflow currency:", wErr)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "synced %s\n", item.path)
+	}
 }
 
 func Rules(ctx context.Context) error {
@@ -474,6 +474,10 @@ type gateCtx struct {
 }
 
 func Gate(ctx context.Context, fix bool) error {
+	if fix {
+		syncWorkflows()
+		selfUpdate(ctx)
+	}
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
 	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
 	g := &gateCtx{ //nolint:exhaustruct // cfg+greenKey populated by later gate stages
@@ -763,120 +767,6 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	out := fn()
 	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out
-}
-
-const (
-	covThreshold = 0.0
-	coverProfile = "coverage.out"
-	watchPollTTL = 600 * time.Millisecond
-)
-
-var coverTotalRe = regexp.MustCompile(`total:\s+\(statements\)\s+([0-9.]+)%`)
-
-func Cov(ctx context.Context) error {
-	args := []string{cmdTest, "-coverprofile=" + coverProfile, "-covermode=atomic", allPackages}
-	defer func() { _ = os.Remove(coverProfile) }() //nolint:errcheck // best-effort artifact cleanup
-	out, ok := runCombined(ctx, goCmd, args...)
-	if !ok {
-		return fmt.Errorf("%w: go test -coverprofile:\n%s", ErrGate, tailLines(out, tailTest))
-	}
-	funcOut, funcOK := runOut(ctx, goCmd, "tool", "cover", "-func="+coverProfile)
-	if !funcOK {
-		return fmt.Errorf("%w: go tool cover", ErrGate)
-	}
-	pct, found := coverTotal(funcOut)
-	if !found {
-		fmt.Fprintln(os.Stdout, "ok (no statements to cover)")
-		return nil
-	}
-	if pct < covThreshold {
-		return fmt.Errorf("%w: coverage %.1f%% below threshold %.1f%%", ErrGate, pct, covThreshold)
-	}
-	fmt.Fprintf(os.Stderr, "coverage: %.1f%%\n", pct)
-	return nil
-}
-
-func coverTotal(funcOut []byte) (float64, bool) {
-	m := coverTotalRe.FindSubmatch(funcOut)
-	if m == nil {
-		return covThreshold, false
-	}
-	pct, err := strconv.ParseFloat(string(m[1]), 64)
-	if err != nil {
-		return covThreshold, false
-	}
-	return pct, true
-}
-
-func Watch(ctx context.Context) error {
-	fmt.Fprintln(os.Stderr, "watching .go/.mod/.sum — re-running gate on change (ctrl-c to stop)")
-	var prev map[string]int64
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		snap := watchSnapshot()
-		if !sameSnapshot(prev, snap) {
-			prev = snap
-			err := Gate(ctx, true)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "lintmax-go:", err)
-			}
-		}
-		time.Sleep(watchPollTTL)
-	}
-}
-
-func watchSnapshot() map[string]int64 {
-	snap := map[string]int64{}
-	walk := func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil //nolint:nilerr // best-effort watch walk
-		}
-		if info.IsDir() {
-			return skipNoise(info.Name())
-		}
-		if relevantHashFile(path) {
-			snap[path] = info.ModTime().UnixNano()
-		}
-		return nil
-	}
-	_ = filepath.Walk(".", walk) //nolint:errcheck // best-effort snapshot
-	return snap
-}
-
-func sameSnapshot(a, b map[string]int64) bool {
-	if a == nil || len(a) != len(b) {
-		return false
-	}
-	for k, v := range b {
-		if a[k] != v {
-			return false
-		}
-	}
-	return true
-}
-
-func Sync() error {
-	dirScripts := filepath.Join(dirGithub, "scripts")
-	dirFlows := filepath.Join(dirGithub, dirWorkflows)
-	items := []scaffold{
-		{path: fileEditorCfg, data: config.EditorConfig},
-		{path: filepath.Join(dirFlows, ciWorkflowPath), data: config.ConsumerCI},
-		{path: filepath.Join(dirFlows, "release.yml"), data: config.ConsumerRelease},
-		{path: filepath.Join(dirScripts, "prune-ci-runs.sh"), data: config.PruneCIRuns},
-		{path: filepath.Join(dirScripts, "prune-old-releases.sh"), data: config.PruneOldReleases},
-	}
-	for _, item := range items {
-		err := writeFile(item)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "%s%s\n", statusSynced, item.path)
-	}
-	return nil
 }
 
 func idiomNotes(idiomErr error, issues []idiom.Issue) []string {
