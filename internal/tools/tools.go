@@ -38,9 +38,4 @@ var All = []Tool{
 		Pkg:  "github.com/google/capslock/cmd/capslock",
 		Why:  "dependency capability analysis",
 	},
-	{
-		Name: "gremlins",
-		Pkg:  "github.com/go-gremlins/gremlins/cmd/gremlins",
-		Why:  "mutation testing (active 2026 alternative to avito-tech/go-mutesting)",
-	},
 }

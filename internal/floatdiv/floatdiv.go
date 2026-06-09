@@ -84,14 +84,14 @@ func riskyDivision(
 ) (Issue, bool) {
 	bin, ok := n.(*ast.BinaryExpr)
 	if !ok || bin.Op != token.QUO || !isFloat(p.TypesInfo.TypeOf(bin)) {
-		return Issue{}, false
+		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
 	}
 	den, risky := riskyDenominator(bin.Y)
 	if !risky {
-		return Issue{}, false
+		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
 	}
 	if _, found := guarded[den]; found {
-		return Issue{}, false
+		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
 	}
 	return Issue{Pos: p.Fset.Position(bin.Pos()).String(), Operand: den, Func: fn.Name.Name}, true
 }

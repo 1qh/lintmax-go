@@ -41,7 +41,7 @@ lintmax-go rules    # list every enabled linter under the maxed config
 lintmax-go fix --deep / check --deep   # + slow scanners (govulncheck, osv-scanner, capslock)
 ```
 
-Silent on success — zero output, exit 0 = clean. Tool output is shown only on failure.
+Prints `ok` on a single line on success, exit 0 = clean. Tool output is shown only on failure (verbose). The `ok` is the explicit success signal an agent needs to confirm the gate ran and passed; a clean run that is cached prints `ok (cached)`.
 
 ## What runs
 
@@ -68,10 +68,14 @@ Two hard limits Go's gofmt imposes that lintmax doesn't hit (cannot be overridde
 
 The disable list starts empty. Each entry is **earned** by a concrete conflict found on real code, never anticipated — feature-forced (comment-strip/compact removing what a rule demands) or lintmax-parity (matching lintmax's own OFF-list). See `internal/config/golangci.yml` for the documented reason on each.
 
+## Configless by default
+
+The bundled config is **generic only** and runs with **zero per-project config** — no consumer file is read, no override is merged. It carries no project/ecosystem opinion (import paths, in-house ban patterns, first-party struct scope); those live in the consuming project's own enforcement layer, never in lintmax. `exhaustruct` ships disabled (with no include it would flag every third-party `T{}`); `forbidigo` ships generic stdlib-discipline bans only (`log.*`, bare `fmt.Print*`, `context.Background` in tests).
+
 ## Strictness policy
 
 - `default: all` — opt out of nothing by default; new linters auto-enabled.
-- Only **physical conflicts** disabled (`nlreturn` vs `wsl_v5`), and tools that are structurally per-project (`depguard`) — these belong in a project's own override, not a generic config.
+- Only **physical conflicts** disabled (`nlreturn` vs `wsl_v5`) — every other linter and rule stays on.
 - Maxed internal checks: staticcheck all categories, gocritic all checks, revive all rules, gosec low/low, errcheck type-assertions + blank.
 - golangci's silent default exclusions are **off** — nothing is hidden.
 - Every suppression requires `//nolint:rule // reason` (nolintlint enforces it).

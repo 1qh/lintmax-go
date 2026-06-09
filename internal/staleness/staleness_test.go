@@ -82,7 +82,7 @@ func TestFormatRendersIssues(t *testing.T) {
 	issues := []staleness.Issue{{
 		Source: "actions", Name: "actions/checkout",
 		Have: "v5", Latest: "v6",
-		ReleasedAt: time.Now().Add(-30 * 24 * time.Hour), //nolint:forbidigo // reason: bootstrap clock read
+		ReleasedAt: time.Now().Add(-30 * 24 * time.Hour),
 	}}
 	out := staleness.Format(issues)
 	if out == "" {

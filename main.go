@@ -19,7 +19,7 @@ usage:
   lintmax upgrade   reinstall lintmax-go itself @latest
   lintmax version   print lintmax-go's version
   lintmax rules     list every enabled linter under the maxed config
-silent on success, exit 0 = clean.`
+prints "ok" on success, exit 0 = clean; verbose only on failure.`
 
 const (
 	exitOK    = 0
@@ -31,7 +31,7 @@ const (
 func main() { os.Exit(realMain(os.Args[1:])) }
 
 func maybeProfile() func() {
-	path := os.Getenv("LINTMAX_CPUPROFILE") //nolint:forbidigo // reason: bootstrap layer owns env reads
+	path := os.Getenv("LINTMAX_CPUPROFILE")
 	if path == "" {
 		return func() {}
 	}
@@ -60,11 +60,11 @@ func realMain(args []string) int {
 		fmt.Fprintln(os.Stdout, version.Current())
 		return exitOK
 	case "update":
-		return report(run.EnsureLatest(ctx, true))
+		return reportOK(run.EnsureLatest(ctx, true))
 	case "upgrade":
-		return report(run.Upgrade(ctx))
+		return reportOK(run.Upgrade(ctx))
 	case "init":
-		return report(run.Init())
+		return reportOK(run.Init())
 	case "rules":
 		return rulesCmd(ctx)
 	case cmdFix, "check":
@@ -97,4 +97,12 @@ func report(err error) int {
 		return exitFail
 	}
 	return exitOK
+}
+
+func reportOK(err error) int {
+	code := report(err)
+	if code == exitOK {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+	return code
 }
