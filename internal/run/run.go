@@ -263,72 +263,6 @@ func selfUpdate(ctx context.Context) {
 	_ = cmd.Run() //nolint:errcheck // best-effort self-refresh; gate proceeds on the running binary
 }
 
-type scaffold struct {
-	path string
-	data []byte
-}
-
-const (
-	dirGithub      = ".github"
-	dirWorkflows   = "workflows"
-	fileEditorCfg  = ".editorconfig"
-	mkdirErrFmt    = "mkdir %s: %w"
-	writeErrFmt    = "write %s: %w"
-	shExt          = ".sh"
-	ciWorkflowPath = "ci.yml"
-	selfModule     = "github.com/1qh/lintmax-go"
-)
-
-func writeFile(item scaffold) error {
-	mkErr := os.MkdirAll(filepath.Dir(item.path), dirPerm)
-	if mkErr != nil {
-		return fmt.Errorf(mkdirErrFmt, item.path, mkErr)
-	}
-	mode := os.FileMode(configMode)
-	if strings.HasSuffix(item.path, shExt) {
-		mode = dirPerm
-	}
-	wErr := os.WriteFile(item.path, item.data, mode)
-	if wErr != nil {
-		return fmt.Errorf(writeErrFmt, item.path, wErr)
-	}
-	return nil
-}
-
-func workflowScaffolds() []scaffold {
-	dirScripts := filepath.Join(dirGithub, "scripts")
-	dirFlows := filepath.Join(dirGithub, dirWorkflows)
-	return []scaffold{
-		{path: fileEditorCfg, data: config.EditorConfig},
-		{path: filepath.Join(dirFlows, ciWorkflowPath), data: config.ConsumerCI},
-		{path: filepath.Join(dirFlows, "release.yml"), data: config.ConsumerRelease},
-		{path: filepath.Join(dirScripts, "prune-ci-runs.sh"), data: config.PruneCIRuns},
-		{path: filepath.Join(dirScripts, "prune-old-releases.sh"), data: config.PruneOldReleases},
-	}
-}
-
-func syncWorkflows() {
-	data, err := os.ReadFile(fileGoMod)
-	if err != nil {
-		return
-	}
-	if modfile.ModulePath(data) == selfModule {
-		return
-	}
-	for _, item := range workflowScaffolds() {
-		existing, rErr := os.ReadFile(item.path)
-		if rErr == nil && bytes.Equal(existing, item.data) {
-			continue
-		}
-		wErr := writeFile(item)
-		if wErr != nil {
-			fmt.Fprintln(os.Stderr, "lintmax-go: workflow currency:", wErr)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "synced %s\n", item.path)
-	}
-}
-
 func Rules(ctx context.Context) error {
 	cfg, err := writeConfig()
 	if err != nil {
@@ -475,7 +409,6 @@ type gateCtx struct {
 
 func Gate(ctx context.Context, fix bool) error {
 	if fix {
-		syncWorkflows()
 		selfUpdate(ctx)
 	}
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
