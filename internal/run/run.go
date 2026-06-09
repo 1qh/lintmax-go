@@ -25,6 +25,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
 	"github.com/1qh/lintmax-go/internal/idiom"
+	"github.com/1qh/lintmax-go/internal/override"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -119,7 +120,7 @@ func toolsPresent() bool {
 }
 
 func EnsureLatest(ctx context.Context, force bool) error {
-	if !force && state.Load().Fresh(refreshTTL) && toolsPresent() {
+	if !force && !inCI() && state.Load().Fresh(refreshTTL) && toolsPresent() {
 		return nil
 	}
 	var (
@@ -164,6 +165,11 @@ func writeConfig() (string, error) {
 	if extra := generatedExclusions(); extra != "" {
 		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
 	}
+	spec, ovErr := override.Load(".")
+	if ovErr != nil {
+		return emptyArg, fmt.Errorf("override: %w", ovErr)
+	}
+	cfg = override.Apply(cfg, spec)
 	err = os.WriteFile(path, []byte(cfg), configMode)
 	if err != nil {
 		return emptyArg, fmt.Errorf("write config: %w", err)
@@ -435,10 +441,8 @@ type gateCtx struct {
 }
 
 func Gate(ctx context.Context, fix bool) error {
-	//nolint:forbidigo // reason: bootstrap //nolint:forbidigo // reason: bootstrap layer owns env reads
-	timing := os.Getenv("LINTMAX_TIMING") == "1"
-	//nolint:forbidigo // reason: bootstrap //nolint:forbidigo // reason: bootstrap layer owns env reads
-	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
+	timing := os.Getenv("LINTMAX_TIMING") == "1"  //nolint:forbidigo // reason: bootstrap layer owns env reads
+	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
 	g := &gateCtx{
 		ctx:       ctx,
 		timing:    timing,

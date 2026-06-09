@@ -68,6 +68,22 @@ Two hard limits Go's gofmt imposes that lintmax doesn't hit (cannot be overridde
 
 The disable list starts empty. Each entry is **earned** by a concrete conflict found on real code, never anticipated — feature-forced (comment-strip/compact removing what a rule demands) or lintmax-parity (matching lintmax's own OFF-list). See `internal/config/golangci.yml` for the documented reason on each.
 
+## Project overrides
+
+The bundled config is **generic only** — it carries no project/ecosystem opinion (import paths, in-house ban patterns, first-party struct scope). A consumer supplies those from a `.lintmax-override.yml` in its repo root; lintmax-go merges it into the generated config at run time:
+
+```yaml
+exhaustructInclude:        # enables exhaustruct, scoped to YOUR first-party packages
+  - '^github\.com/you/yourapp.*'
+forbidigoForbid:           # YOUR call-site bans (e.g. env/clock single-source policy)
+  - pattern: '^os\.Getenv$'
+    msg: "env vars flow through yourapp.Config"
+  - pattern: '^time\.Now$'
+    msg: "time flows through yourapp.Clock"
+```
+
+`exhaustruct` ships disabled (with no include it would flag every third-party `T{}`), and `forbidigo` ships generic stdlib-discipline bans only (`log.*`, bare `fmt.Print*`, `context.Background` in tests). Without an override file these stay generic; the override never lowers strictness, only adds project scope.
+
 ## Strictness policy
 
 - `default: all` — opt out of nothing by default; new linters auto-enabled.
