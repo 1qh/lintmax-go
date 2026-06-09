@@ -15,6 +15,9 @@ usage:
   lintmax fix       format + autofix + full gate (every linter + govulncheck + osv-scanner + nilaway + capslock)
   lintmax check     verify only, no writes (CI mode) — same exhaustive scanner set as fix
   lintmax init      scaffold .editorconfig + CI workflow into this project
+  lintmax sync      write/refresh the standard ci.yml + release.yml + prune scripts into this project
+  lintmax cov       run test coverage (go test -coverprofile) + print the total
+  lintmax watch     re-run the gate (fix mode) on every .go/.mod/.sum change
   lintmax update    reinstall every linter tool @latest
   lintmax upgrade   reinstall lintmax-go itself @latest
   lintmax version   print lintmax-go's version
@@ -55,24 +58,31 @@ func realMain(args []string) int {
 		return exitUsage
 	}
 	ctx := context.Background() //nolint:forbidigo // reason: bootstrap top-level ctx seed
-	switch args[0] {
-	case "version":
-		fmt.Fprintln(os.Stdout, version.Current())
-		return exitOK
-	case "update":
-		return reportOK(run.EnsureLatest(ctx, true))
-	case "upgrade":
-		return reportOK(run.Upgrade(ctx))
-	case "init":
-		return reportOK(run.Init())
-	case "rules":
-		return rulesCmd(ctx)
-	case cmdFix, "check":
-		return gateCmd(ctx, args[0] == cmdFix)
-	default:
+	return dispatch(ctx, args[0])
+}
+
+func commands() map[string]func(context.Context) int {
+	return map[string]func(context.Context) int{
+		"version": func(context.Context) int { fmt.Fprintln(os.Stdout, version.Current()); return exitOK },
+		"update":  func(ctx context.Context) int { return reportOK(run.EnsureLatest(ctx, true)) },
+		"upgrade": func(ctx context.Context) int { return reportOK(run.Upgrade(ctx)) },
+		"init":    func(context.Context) int { return reportOK(run.Init()) },
+		"sync":    func(context.Context) int { return reportOK(run.Sync()) },
+		"cov":     func(ctx context.Context) int { return reportOK(run.Cov(ctx)) },
+		"watch":   func(ctx context.Context) int { return report(run.Watch(ctx)) },
+		"rules":   rulesCmd,
+		cmdFix:    func(ctx context.Context) int { return gateCmd(ctx, true) },
+		"check":   func(ctx context.Context) int { return gateCmd(ctx, false) },
+	}
+}
+
+func dispatch(ctx context.Context, cmd string) int {
+	handler, ok := commands()[cmd]
+	if !ok {
 		fmt.Fprintln(os.Stdout, usage)
 		return exitUsage
 	}
+	return handler(ctx)
 }
 
 func rulesCmd(ctx context.Context) int {
