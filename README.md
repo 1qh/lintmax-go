@@ -41,7 +41,7 @@ lintmax-go rules    # list every enabled linter under the maxed config
 lintmax-go fix --deep / check --deep   # + slow scanners (govulncheck, osv-scanner, capslock)
 ```
 
-Silent on success — zero output, exit 0 = clean. Tool output is shown only on failure.
+Prints `ok` on a single line on success, exit 0 = clean. Tool output is shown only on failure (verbose). The `ok` is the explicit success signal an agent needs to confirm the gate ran and passed; a clean run that is cached prints `ok (cached)`.
 
 ## What runs
 
