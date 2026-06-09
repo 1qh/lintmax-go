@@ -104,7 +104,7 @@ func writeCachedGoMod(key string, issues []Issue) {
 	if mkErr != nil {
 		return
 	}
-	now := time.Now() //nolint:forbidigo // reason: bootstrap clock read
+	now := time.Now()
 	raw, err := json.Marshal(cachedGoMod{Issues: issues, CachedAt: now})
 	if err != nil {
 		return
@@ -121,7 +121,7 @@ func writeCachedRelease(action string, rel *ghRelease) {
 	if mkErr != nil {
 		return
 	}
-	now := time.Now() //nolint:forbidigo // reason: bootstrap clock read
+	now := time.Now()
 	raw, err := json.Marshal(cachedRelease{Release: *rel, CachedAt: now})
 	if err != nil {
 		return

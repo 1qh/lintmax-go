@@ -22,7 +22,7 @@ linters:
     - wsl_v5           # successor of wsl; same conflict
     - nlreturn         # blank-before-return; direct conflict with compact-style policy
     - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
-    - exhaustruct      # inherently project-scoped: needs first-party import-path include patterns. A consumer opts in via .lintmax-override.yml (LINTMAX_OVERRIDE_DISABLE removed when override supplies exhaustruct.include).
+    - exhaustruct      # inherently project-scoped: with no include it flags every third-party T{}, so it ships disabled in the generic config.
   settings:
     goconst:
       ignore-calls: false
@@ -99,11 +99,11 @@ linters:
             - pkg: io/ioutil
               desc: deprecated; use io + os package equivalents
     forbidigo:
-      # Generic Go discipline only. Project/ecosystem bans (a project's own config.go/clock.go
-      # single-source conventions, banned in-house import paths) are NOT generic — a consumer
-      # supplies those via .lintmax-override.yml forbidigo.forbid entries (LINTMAX_FORBIDIGO_FORBID).
+      # Generic Go discipline only — bans that apply to any Go project. Project/ecosystem bans
+      # (in-house import paths, a project's env/clock single-source conventions) are not generic
+      # and stay in the consuming project's own enforcement layer, never in lintmax.
       # depguard cannot reach log.* (prefix-match on `log` vs `log/slog`); forbidigo targets usage.
-      forbid: # LINTMAX_FORBIDIGO_FORBID
+      forbid:
         - pattern: '^log\.(Print|Println|Printf|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln|Default|SetFlags|SetOutput|SetPrefix|New|Logger)$'
           msg: use log/slog (the unstructured log package is banned)
         - pattern: '^fmt\.Print(|f|ln)$'

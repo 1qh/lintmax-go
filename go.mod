@@ -2,10 +2,7 @@ module github.com/1qh/lintmax-go
 
 go 1.26.4
 
-require (
-	go.yaml.in/yaml/v3 v3.0.4
-	golang.org/x/tools v0.45.0
-)
+require golang.org/x/tools v0.45.0
 
 require (
 	golang.org/x/mod v0.36.0 // indirect

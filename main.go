@@ -31,7 +31,7 @@ const (
 func main() { os.Exit(realMain(os.Args[1:])) }
 
 func maybeProfile() func() {
-	path := os.Getenv("LINTMAX_CPUPROFILE") //nolint:forbidigo // reason: bootstrap layer owns env reads
+	path := os.Getenv("LINTMAX_CPUPROFILE")
 	if path == "" {
 		return func() {}
 	}

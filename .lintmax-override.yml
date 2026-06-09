@@ -1,7 +1,0 @@
-forbidigoForbid:
-  - pattern: '^os\.Getenv$'
-    msg: "env vars flow through the bootstrap layer (config-owned); forbidden elsewhere"
-  - pattern: '^os\.Setenv$'
-    msg: "tests set state via typed config, not os.Setenv"
-  - pattern: '^time\.Now$'
-    msg: "time flows through the bootstrap clock; forbidden elsewhere"

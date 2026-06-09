@@ -25,7 +25,6 @@ import (
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
 	"github.com/1qh/lintmax-go/internal/idiom"
-	"github.com/1qh/lintmax-go/internal/override"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -57,10 +56,10 @@ const (
 var ErrGate = errors.New("gate failed")
 
 func binDir() string {
-	if v := os.Getenv("GOBIN"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
+	if v := os.Getenv("GOBIN"); v != emptyArg {
 		return v
 	}
-	if v := os.Getenv("GOPATH"); v != emptyArg { //nolint:forbidigo // reason: bootstrap layer owns env reads
+	if v := os.Getenv("GOPATH"); v != emptyArg {
 		return filepath.Join(v, binSubdir)
 	}
 	home, err := os.UserHomeDir()
@@ -102,7 +101,7 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 			fmt.Fprintf(os.Stderr, "↑ %s %s → %s\n", tool.Name, old, ver)
 		}
 	}
-	next.LastCheck = time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
+	next.LastCheck = time.Now()
 	saveErr := next.Save()
 	if saveErr != nil {
 		fmt.Fprintln(os.Stderr, "lintmax-go: version cache:", saveErr)
@@ -165,11 +164,6 @@ func writeConfig() (string, error) {
 	if extra := generatedExclusions(); extra != "" {
 		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
 	}
-	spec, ovErr := override.Load(".")
-	if ovErr != nil {
-		return emptyArg, fmt.Errorf("override: %w", ovErr)
-	}
-	cfg = override.Apply(cfg, spec)
 	err = os.WriteFile(path, []byte(cfg), configMode)
 	if err != nil {
 		return emptyArg, fmt.Errorf("write config: %w", err)
@@ -360,7 +354,7 @@ type collectResult struct {
 }
 
 func inCI() bool {
-	return os.Getenv("GITHUB_ACTIONS") != emptyArg || os.Getenv("CI") != emptyArg //nolint:forbidigo // bootstrap env read
+	return os.Getenv("GITHUB_ACTIONS") != emptyArg || os.Getenv("CI") != emptyArg
 }
 
 func isolateCICache() {
@@ -371,7 +365,7 @@ func isolateCICache() {
 	if err != nil {
 		return
 	}
-	_ = os.Setenv("GOLANGCI_LINT_CACHE", dir) //nolint:errcheck,forbidigo // bootstrap cache isolation
+	_ = os.Setenv("GOLANGCI_LINT_CACHE", dir) //nolint:errcheck // bootstrap cache isolation
 }
 
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
@@ -441,8 +435,8 @@ type gateCtx struct {
 }
 
 func Gate(ctx context.Context, fix bool) error {
-	timing := os.Getenv("LINTMAX_TIMING") == "1"  //nolint:forbidigo // reason: bootstrap layer owns env reads
-	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
+	timing := os.Getenv("LINTMAX_TIMING") == "1"
+	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
 	g := &gateCtx{
 		ctx:       ctx,
 		timing:    timing,
@@ -501,7 +495,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var deepNotes []string
 	var testOut []byte
 	testOK := true
-	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
+	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1"
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
@@ -616,7 +610,7 @@ func staleNote(stale []staleness.Issue) string {
 }
 
 func testArgs() []string {
-	noRace := os.Getenv("LINTMAX_NO_RACE") == "1" //nolint:forbidigo // reason: bootstrap layer owns env reads
+	noRace := os.Getenv("LINTMAX_NO_RACE") == "1"
 	args := []string{cmdTest, "-p=" + strconv.Itoa(testConcurrency(noRace)), "-shuffle=on", "-vet=off"}
 	if !noRace {
 		args = append(args, "-race")
@@ -704,7 +698,7 @@ func timePhase[T any](on bool, phase string, fn func() (T, error)) (T, error) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
+	start := time.Now()
 	out, err := fn()
 	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out, err
@@ -715,7 +709,7 @@ func timePhase2[A, B any](on bool, phase string, fn func() (A, B)) (A, B) {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
+	start := time.Now()
 	a, b := fn()
 	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return a, b
@@ -726,7 +720,7 @@ func timePhase3[T any](on bool, phase string, fn func() T) T {
 	if !on {
 		return fn()
 	}
-	start := time.Now() //nolint:forbidigo // reason: bootstrap layer owns clock reads
+	start := time.Now()
 	out := fn()
 	fmt.Fprintf(os.Stderr, phaseFmt, phase, time.Since(start).Round(time.Millisecond))
 	return out

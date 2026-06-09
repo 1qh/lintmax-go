@@ -68,26 +68,14 @@ Two hard limits Go's gofmt imposes that lintmax doesn't hit (cannot be overridde
 
 The disable list starts empty. Each entry is **earned** by a concrete conflict found on real code, never anticipated — feature-forced (comment-strip/compact removing what a rule demands) or lintmax-parity (matching lintmax's own OFF-list). See `internal/config/golangci.yml` for the documented reason on each.
 
-## Project overrides
+## Configless by default
 
-The bundled config is **generic only** — it carries no project/ecosystem opinion (import paths, in-house ban patterns, first-party struct scope). A consumer supplies those from a `.lintmax-override.yml` in its repo root; lintmax-go merges it into the generated config at run time:
-
-```yaml
-exhaustructInclude:        # enables exhaustruct, scoped to YOUR first-party packages
-  - '^github\.com/you/yourapp.*'
-forbidigoForbid:           # YOUR call-site bans (e.g. env/clock single-source policy)
-  - pattern: '^os\.Getenv$'
-    msg: "env vars flow through yourapp.Config"
-  - pattern: '^time\.Now$'
-    msg: "time flows through yourapp.Clock"
-```
-
-`exhaustruct` ships disabled (with no include it would flag every third-party `T{}`), and `forbidigo` ships generic stdlib-discipline bans only (`log.*`, bare `fmt.Print*`, `context.Background` in tests). Without an override file these stay generic; the override never lowers strictness, only adds project scope.
+The bundled config is **generic only** and runs with **zero per-project config** — no consumer file is read, no override is merged. It carries no project/ecosystem opinion (import paths, in-house ban patterns, first-party struct scope); those live in the consuming project's own enforcement layer, never in lintmax. `exhaustruct` ships disabled (with no include it would flag every third-party `T{}`); `forbidigo` ships generic stdlib-discipline bans only (`log.*`, bare `fmt.Print*`, `context.Background` in tests).
 
 ## Strictness policy
 
 - `default: all` — opt out of nothing by default; new linters auto-enabled.
-- Only **physical conflicts** disabled (`nlreturn` vs `wsl_v5`), and tools that are structurally per-project (`depguard`) — these belong in a project's own override, not a generic config.
+- Only **physical conflicts** disabled (`nlreturn` vs `wsl_v5`) — every other linter and rule stays on.
 - Maxed internal checks: staticcheck all categories, gocritic all checks, revive all rules, gosec low/low, errcheck type-assertions + blank.
 - golangci's silent default exclusions are **off** — nothing is hidden.
 - Every suppression requires `//nolint:rule // reason` (nolintlint enforces it).
