@@ -30,6 +30,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/tools"
 	"github.com/1qh/lintmax-go/internal/transform"
 	"github.com/1qh/lintmax-go/internal/version"
+	"golang.org/x/mod/modfile"
 )
 
 const (
@@ -92,7 +93,7 @@ func toolVersion(ctx context.Context, binPath string) string {
 
 func reportBumps(ctx context.Context, installed []tools.Tool) {
 	prev := state.Load()
-	next := state.State{Versions: map[string]string{}, LastCheck: time.Time{}}
+	next := state.State{Versions: map[string]string{}, LastCheck: time.Time{}, LastGreenByCWD: prev.LastGreenByCWD}
 	for _, tool := range installed {
 		ver := toolVersion(ctx, bin(tool.Name))
 		next.Versions[tool.Name] = ver
@@ -161,6 +162,7 @@ func writeConfig() (string, error) {
 	}
 	path := filepath.Join(dir, ".golangci.yml")
 	cfg := string(config.GolangCI)
+	cfg = strings.Replace(cfg, "      include: []\n", exhaustructInclude(), 1)
 	if extra := generatedExclusions(); extra != "" {
 		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
 	}
@@ -169,6 +171,18 @@ func writeConfig() (string, error) {
 		return emptyArg, fmt.Errorf("write config: %w", err)
 	}
 	return path, nil
+}
+
+func exhaustructInclude() string {
+	data, err := os.ReadFile("go.mod")
+	if err != nil {
+		return emptyArg
+	}
+	mod := modfile.ModulePath(data)
+	if mod == emptyArg {
+		return emptyArg
+	}
+	return "      include:\n        - '^" + regexp.QuoteMeta(mod) + "/.*'\n"
 }
 
 var genHeaderRe = regexp.MustCompile(`^// Code generated .* DO NOT EDIT\.$`)
@@ -383,7 +397,7 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	wg.Go(func() {
 		gcOut, gcOK := runOut(ctx, bin(golangciBin), gcArgs...)
 		gcDiags := diag.ParseGolangci(gcOut)
-		out := collectResult{diags: gcDiags}
+		out := collectResult{diags: gcDiags} //nolint:exhaustruct // notes set below only on failure
 		if !gcOK && len(gcDiags) == 0 {
 			out.notes = []string{"golangci-lint:\n" + tailLines(gcOut, tailDefault)}
 		}
@@ -391,11 +405,11 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	})
 	wg.Go(func() {
 		dcOut, _ := runCombined(ctx, bin(binDeadcode), "-test", allPackages)
-		results <- collectResult{diags: diag.ParseLines(dcOut, binDeadcode)}
+		results <- collectResult{diags: diag.ParseLines(dcOut, binDeadcode)} //nolint:exhaustruct // notes unused here
 	})
 	wg.Go(func() {
 		nilOut, _ := runOut(ctx, bin(binNilaway), "-json", allPackages)
-		results <- collectResult{diags: diag.ParseAnalysis(nilOut, binNilaway)}
+		results <- collectResult{diags: diag.ParseAnalysis(nilOut, binNilaway)} //nolint:exhaustruct // notes unused here
 	})
 	wg.Wait()
 	close(results)
@@ -437,7 +451,7 @@ type gateCtx struct {
 func Gate(ctx context.Context, fix bool) error {
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
 	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
-	g := &gateCtx{
+	g := &gateCtx{ //nolint:exhaustruct // cfg+greenKey populated by later gate stages
 		ctx:       ctx,
 		timing:    timing,
 		fix:       fix,

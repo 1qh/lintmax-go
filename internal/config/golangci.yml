@@ -22,11 +22,16 @@ linters:
     - wsl_v5           # successor of wsl; same conflict
     - nlreturn         # blank-before-return; direct conflict with compact-style policy
     - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
-    - exhaustruct      # inherently project-scoped: with no include it flags every third-party T{}, so it ships disabled in the generic config.
   settings:
     goconst:
       ignore-calls: false
       min-occurrences: 2
+    exhaustruct:
+      # include is filled at config-generation time from the consuming project's go.mod module
+      # path (^<module>/) so all-fields-set is enforced on FIRST-PARTY structs only — full
+      # strictness on the code that matters, no flood on stdlib/third-party T{}. configless:
+      # lintmax derives it from go.mod, no consumer file. unreadable go.mod -> ON unscoped.
+      include: []
     mnd:
       ignored-numbers: ['0', '1']
     errcheck:
