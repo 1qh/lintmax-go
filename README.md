@@ -45,7 +45,6 @@ The tool maintains itself — you never type a maintenance command. Every gate r
 
 - **Linter @latest refresh** — every child tool is reinstalled `@latest` on a refresh cadence (fast local loop caches the last green run for <24h; CI always forces `@latest`).
 - **Self-update** — in CI the running binary refreshes itself to `@latest` before gating.
-- **Workflow currency** — on a `fix` in a consumer project, the standard `.github/workflows/{ci,release}.yml`, the prune scripts, and `.editorconfig` are written/refreshed idempotently when absent or stale (no-op when already current; skipped in lintmax-go's own repo).
 - **Green-tree-hash cache** — a clean `check` is skipped when the working tree hash is unchanged (`ok (cached)`).
 - **Staleness scan** — `go.mod` deps + GitHub-Action pins are checked against upstream every run.
 
