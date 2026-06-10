@@ -51,6 +51,7 @@ const (
 	minParallel  = 2
 	cfgFlag      = "--config"
 	binDeadcode  = "deadcode"
+	nodeModulesDir = "node_modules"
 	binNilaway   = "nilaway"
 	fileGoMod    = "go.mod"
 )
@@ -375,7 +376,12 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	var diags []diag.Diagnostic
 	var notes []string
 	for r := range results {
-		diags = append(diags, r.diags...)
+		for i := range r.diags {
+			if strings.Contains(r.diags[i].File, nodeModulesDir) {
+				continue
+			}
+			diags = append(diags, r.diags[i])
+		}
 		notes = append(notes, r.notes...)
 	}
 	return diags, notes

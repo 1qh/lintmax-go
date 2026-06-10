@@ -13,6 +13,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+const nodeModules = "node_modules"
+
 const (
 	minValueLen = 3
 	minDupNames = 2

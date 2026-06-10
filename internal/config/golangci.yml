@@ -164,6 +164,7 @@ linters:
     # codegen output (sqlc / templ): committed, regenerated, never hand-edited — deterministic
     # path exclusion so findings never depend on golangci's generated-file-filter cache state.
     paths:
+      - '(^|/)node_modules/'
       - '\.sql\.go$'
       - '_templ\.go$'
     rules:

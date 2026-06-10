@@ -15,6 +15,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+const nodeModules = "node_modules"
+
 const (
 	fnLen     = "len"
 	fnLenCall = "len("
@@ -40,7 +42,7 @@ func Scan(ctx context.Context, root string) ([]Issue, error) {
 	}
 	var issues []Issue
 	for _, p := range pkgs {
-		if p.TypesInfo == nil {
+		if p.TypesInfo == nil || strings.Contains(p.PkgPath, nodeModules) {
 			continue
 		}
 		for _, f := range p.Syntax {
