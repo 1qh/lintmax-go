@@ -38,7 +38,7 @@ func Scan(ctx context.Context, root string) ([]Issue, error) {
 	}
 	var issues []Issue
 	for _, p := range pkgs {
-		if p.Types == nil {
+		if p.Types == nil || strings.Contains(p.PkgPath, nodeModules) {
 			continue
 		}
 		issues = append(issues, scanPkg(p.Types)...)

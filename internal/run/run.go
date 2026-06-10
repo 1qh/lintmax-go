@@ -34,26 +34,26 @@ import (
 )
 
 const (
-	emptyArg     = ""
-	goCmd        = "go"
-	configMode   = 0o600
-	dirPerm      = 0o755
-	refreshTTL   = 24 * time.Hour
-	cmdTest      = "test"
-	binSubdir    = "bin"
-	cmdInstall   = "install"
-	golangciBin  = "golangci-lint"
-	allPackages  = "./..."
-	transformErr = "transform: %w"
-	phaseFmt     = "  %-12s %v\n"
-	tailDefault  = 15
-	tailTest     = 20
-	minParallel  = 2
-	cfgFlag      = "--config"
-	binDeadcode  = "deadcode"
+	emptyArg       = ""
+	goCmd          = "go"
+	configMode     = 0o600
+	dirPerm        = 0o755
+	refreshTTL     = 24 * time.Hour
+	cmdTest        = "test"
+	binSubdir      = "bin"
+	cmdInstall     = "install"
+	golangciBin    = "golangci-lint"
+	allPackages    = "./..."
+	transformErr   = "transform: %w"
+	phaseFmt       = "  %-12s %v\n"
+	tailDefault    = 15
+	tailTest       = 20
+	minParallel    = 2
+	cfgFlag        = "--config"
+	binDeadcode    = "deadcode"
 	nodeModulesDir = "node_modules"
-	binNilaway   = "nilaway"
-	fileGoMod    = "go.mod"
+	binNilaway     = "nilaway"
+	fileGoMod      = "go.mod"
 )
 
 var ErrGate = errors.New("gate failed")
