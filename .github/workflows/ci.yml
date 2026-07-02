@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: wipe workspace (leftover-file leakage between runs on shared runner)
         run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: shellcheck every shell script in the repo
         run: shellcheck install.sh .github/scripts/*.sh
       - name: cancel sibling jobs on failure
@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: wipe workspace (leftover-file leakage between runs on shared runner)
         run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: install self at HEAD (always-latest source of truth — current checkout = current main)
         run: go install .
       - name: "dogfood — check (every linter + nilaway + deadcode + govulncheck + osv-scanner + capslock + staleness all always-on)"
@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: wipe workspace (sparse-checkout leakage between jobs on shared runner)
         run: rm -rf "${GITHUB_WORKSPACE:?}/".[!.]* "${GITHUB_WORKSPACE:?}/"* 2>/dev/null || true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false

@@ -57,14 +57,14 @@ incl. clickhouse-go/v2, excelize/v2, genai, otel/sdk).
 real run: persist the hash. Invalidated automatically when lintmax-go upgrades
 (version is part of the hash).
 
-Bypass with `LINTMAX_NO_SKIP=1`. Disabled for `fix` and `--deep` modes.
+Bypass with `LINTMAX_NO_CACHE=1`. Disabled for `fix` and `--deep` modes.
 
 ## Env knobs
 
 | Env | Default | Effect |
 |---|---|---|
 | `LINTMAX_TIMING=1` | off | print per-phase wall to stderr |
-| `LINTMAX_NO_SKIP=1` | off | bypass tree-hash cache hit |
+| `LINTMAX_NO_CACHE=1` | off | bypass tree-hash cache hit |
 | `LINTMAX_NO_RACE=1` | off | drop `-race` (saves ~5s warm, 40s cold) |
 | `LINTMAX_SKIP_TEST=1` | off | skip test phase entirely |
 | `LINTMAX_SKIP_STALENESS=1` | off | skip GH/go.mod staleness scan |

@@ -418,12 +418,12 @@ func Gate(ctx context.Context, fix bool) error {
 		selfUpdate(ctx)
 	}
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
-	noSkip := os.Getenv("LINTMAX_NO_SKIP") == "1"
+	noCache := os.Getenv("LINTMAX_NO_CACHE") == "1"
 	g := &gateCtx{ //nolint:exhaustruct // cfg+greenKey populated by later gate stages
 		ctx:       ctx,
 		timing:    timing,
 		fix:       fix,
-		skipCheck: !fix && !noSkip,
+		skipCheck: !fix && !noCache,
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {
