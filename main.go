@@ -36,9 +36,15 @@ func maybeProfile() func() {
 	}
 	f, err := os.Create(path) //nolint:gosec // user-supplied profile path
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "lintmax: cannot write LINTMAX_CPUPROFILE=%s: %v\n", path, err)
 		return func() {}
 	}
-	_ = pprof.StartCPUProfile(f) //nolint:errcheck // best-effort profile
+	startErr := pprof.StartCPUProfile(f)
+	if startErr != nil {
+		fmt.Fprintf(os.Stderr, "lintmax: cannot start CPU profile: %v\n", startErr)
+		_ = f.Close() //nolint:errcheck // close on a path that already failed
+		return func() {}
+	}
 	return func() {
 		pprof.StopCPUProfile()
 		_ = f.Close() //nolint:errcheck // close on shutdown non-actionable
