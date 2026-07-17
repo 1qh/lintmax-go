@@ -18,6 +18,10 @@ url="https://github.com/$repo/releases/download/$tag/lintmax-go_${ver}_${os}_${a
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 echo "downloading lintmax-go $tag ($os/$arch)…"
-curl -fsSL "$url" | tar -xz -C "$tmp"
+# Piping the download straight into tar hides which step failed: plain sh has no pipefail, so a
+# refused download leaves tar unpacking nothing and the run dies at `install` complaining about a
+# missing file — blaming the file the download was supposed to bring rather than the download.
+curl -fsSL "$url" -o "$tmp/lintmax-go.tar.gz" || { echo "download failed: $url" >&2; exit 1; }
+tar -xzf "$tmp/lintmax-go.tar.gz" -C "$tmp" || { echo "cannot unpack $url" >&2; exit 1; }
 install -m 0755 "$tmp/lintmax-go" "$bindir/lintmax-go"
 echo "installed to $bindir/lintmax-go"
