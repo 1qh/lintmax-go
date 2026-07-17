@@ -9,33 +9,66 @@ set -euo pipefail
 mine="${GITHUB_REF_NAME:?tag required}"
 this_repo="${GITHUB_REPOSITORY:?}"
 
-all_tags() { gh api "repos/$1/git/refs/tags" --jq '.[].ref' 2>/dev/null | sed 's#refs/tags/##'; }
+# Discarding the error made an unreachable API indistinguishable from a repo with no tags: the
+# list came back empty, every loop below had nothing to walk, and the run still announced the
+# prune complete. A repo with no tags answers Not Found; anything else means the answer is unknown.
+all_tags() {
+	local out status
+	set +e
+	out=$(gh api "repos/$1/git/refs/tags" --jq '.[].ref' 2>&1)
+	status=$?
+	set -e
+	if [ "$status" -ne 0 ]; then
+		if printf '%s' "$out" | grep -q 'Not Found'; then return 0; fi
+		echo "prune-old-releases: cannot list tags for $1: $out" >&2
+		exit 1
+	fi
+	printf '%s\n' "$out" | sed 's#refs/tags/##'
+}
 
 is_older() {
-  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$2" ]
+	[ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$2" ]
 }
 
 keep=$(
-  { echo "$mine"; all_tags "$this_repo"; } | grep -v '^$' | sort -V | tail -1
+	{
+		echo "$mine"
+		all_tags "$this_repo"
+	} | grep -v '^$' | sort -V | tail -1
 )
 echo "keeper = $keep"
 
-gh release list --repo "$this_repo" --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null \
-  | while read -r t; do
-      [ -z "$t" ] && continue
-      is_older "$t" "$keep" || continue
-      gh release delete "$t" --repo "$this_repo" --yes --cleanup-tag 2>/dev/null \
-        && echo "deleted release+tag $t" || true
-      sleep 1
-    done
+# Read via process substitution, never a pipe: a piped `while` runs in a subshell, so a failure
+# counted inside it is lost the moment the loop ends and the prune reports clean regardless.
+failed=0
+while read -r t; do
+	[ -z "$t" ] && continue
+	is_older "$t" "$keep" || continue
+	if gh release delete "$t" --repo "$this_repo" --yes --cleanup-tag 2>/dev/null; then
+		echo "deleted release+tag $t"
+	else
+		echo "prune-old-releases: could not delete release $t" >&2
+		failed=$((failed + 1))
+	fi
+	sleep 1
+done < <(gh release list --repo "$this_repo" --limit 200 --json tagName --jq '.[].tagName')
 
-all_tags "$this_repo" \
-  | while read -r t; do
-      [ -z "$t" ] && continue
-      is_older "$t" "$keep" || continue
-      gh api -X DELETE "repos/$this_repo/git/refs/tags/$t" 2>/dev/null \
-        && echo "deleted dangling tag $t" || true
-      sleep 1
-    done
+while read -r t; do
+	[ -z "$t" ] && continue
+	is_older "$t" "$keep" || continue
+	if gh api -X DELETE "repos/$this_repo/git/refs/tags/$t" 2>/dev/null; then
+		echo "deleted dangling tag $t"
+	else
+		echo "prune-old-releases: could not delete tag $t" >&2
+		failed=$((failed + 1))
+	fi
+	sleep 1
+done < <(all_tags "$this_repo")
 
+# Announcing the prune regardless is what let a systematic failure — a token without the scope —
+# look exactly like a working prune.
+if [ "$failed" -gt 0 ]; then
+	echo "prune-old-releases: $failed deletion(s) failed; older releases remain" >&2
+	exit 1
+fi
 echo "prune complete — only $keep remains"
