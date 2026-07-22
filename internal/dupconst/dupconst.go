@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -66,13 +67,81 @@ func scanPkg(pkg *types.Package) []Issue {
 		if len(names) < minDupNames {
 			continue
 		}
-		slices.Sort(names)
 		dispV := v
 		if _, after, ok := strings.Cut(v, "\x00"); ok {
 			dispV = after
 		}
-		out = append(out, Issue{Value: dispV, Pkg: pkg.Name(), Names: names})
+		for _, group := range byDomain(names) {
+			slices.Sort(group)
+			out = append(out, Issue{Value: dispV, Pkg: pkg.Name(), Names: group})
+		}
 	}
+	return out
+}
+
+func byDomain(names []string) [][]string {
+	used := make([]bool, len(names))
+	var out [][]string
+	for i, a := range names {
+		if used[i] {
+			continue
+		}
+		group := []string{a}
+		for j := i + 1; j < len(names); j++ {
+			if used[j] || !sameSubject(a, names[j]) {
+				continue
+			}
+			used[j] = true
+			group = append(group, names[j])
+		}
+		if len(group) >= minDupNames {
+			used[i] = true
+			out = append(out, group)
+		}
+	}
+	slices.SortFunc(out, func(a, b []string) int { return cmp.Compare(a[0], b[0]) })
+	return out
+}
+
+func sameSubject(a, b string) bool {
+	ta, tb := tokens(a), tokens(b)
+	if len(ta) > len(tb) {
+		ta, tb = tb, ta
+	}
+	i := 0
+	for _, t := range tb {
+		if i < len(ta) && tokenAkin(ta[i], t) {
+			i++
+		}
+	}
+	return i == len(ta)
+}
+
+func tokenAkin(a, b string) bool {
+	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
+}
+
+func tokens(name string) []string {
+	var out []string
+	var cur []rune
+	flush := func() {
+		if len(cur) > 0 {
+			out = append(out, strings.ToLower(string(cur)))
+			cur = nil
+		}
+	}
+	runes := []rune(name)
+	for i, r := range runes {
+		if r == '_' {
+			flush()
+			continue
+		}
+		if startsToken(runes, i) {
+			flush()
+		}
+		cur = append(cur, r)
+	}
+	flush()
 	return out
 }
 
@@ -86,4 +155,14 @@ func Format(issues []Issue) string {
 			" — duplicate-value consts; collapse to one\n")
 	}
 	return b.String()
+}
+
+func startsToken(runes []rune, i int) bool {
+	if i == 0 || !unicode.IsUpper(runes[i]) {
+		return false
+	}
+	if !unicode.IsUpper(runes[i-1]) {
+		return true
+	}
+	return i+1 < len(runes) && !unicode.IsUpper(runes[i+1])
 }
