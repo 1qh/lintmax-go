@@ -356,7 +356,7 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	isolateCICache()
 	gcArgs := []string{
 		"run", cfgFlag, cfg,
-		"--concurrency=" + strconv.Itoa(linterConcurrency()),
+		"--concurrency=" + strconv.Itoa(linterConcurrency(skipTestPhase())),
 		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
 	}
 	if fix {
@@ -489,7 +489,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var deepNotes []string
 	var testOut []byte
 	testOK := true
-	skipTest := os.Getenv("LINTMAX_SKIP_TEST") == "1"
+	skipTest := skipTestPhase()
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
@@ -612,7 +612,14 @@ func testArgs() []string {
 	return append(args, allPackages)
 }
 
-func linterConcurrency() int {
+func skipTestPhase() bool {
+	return os.Getenv("LINTMAX_SKIP_TEST") == "1"
+}
+
+func linterConcurrency(skipTest bool) int {
+	if skipTest {
+		return runtime.NumCPU()
+	}
 	n := runtime.NumCPU() / 2 //nolint:mnd // split host CPUs with the parallel test phase
 	if n < minParallel {
 		return minParallel
