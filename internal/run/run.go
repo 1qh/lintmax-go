@@ -326,7 +326,10 @@ func capabilityScan(ctx context.Context) string {
 	return caps.Note(gained)
 }
 
-func deepScan(ctx context.Context) []string {
+func deepScan(ctx context.Context, deep bool) []string {
+	if !deep {
+		return nil
+	}
 	specs := []struct {
 		name string
 		args []string
@@ -344,7 +347,9 @@ func deepScan(ctx context.Context) []string {
 			}
 		})
 	}
-	wg.Go(func() { results[len(specs)] = capabilityScan(ctx) })
+	if deep {
+		wg.Go(func() { results[len(specs)] = capabilityScan(ctx) })
+	}
 	wg.Wait()
 	var notes []string
 	for _, r := range results {
@@ -534,7 +539,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 		})
 	})
 	topWG.Go(func() {
-		deepNotes = timePhase3(g.timing, "vulnScan", func() []string { return deepScan(g.ctx) })
+		deepNotes = timePhase3(g.timing, "vulnScan", func() []string { return deepScan(g.ctx, !g.fix) })
 	})
 	var dupIssues []dupconst.Issue
 	var dupErr error
