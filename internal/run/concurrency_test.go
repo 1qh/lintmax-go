@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// The linter shares host CPUs with the parallel test phase, which is correct only while that phase
-// actually runs. The agent-side call skips tests, so halving the cores there throttles the gate's
-// slowest remaining stage for a phase that is not running at all.
 func TestLinterConcurrencyTakesTheWholeHostWhenTestsAreSkipped(t *testing.T) {
 	t.Parallel()
 	if got := linterConcurrency(true); got != runtime.NumCPU() {
@@ -16,8 +13,6 @@ func TestLinterConcurrencyTakesTheWholeHostWhenTestsAreSkipped(t *testing.T) {
 	}
 }
 
-// The negative control: while the test phase runs, the split must survive, or the two phases
-// oversubscribe the host and both get slower.
 func TestLinterConcurrencySharesTheHostWhileTestsRun(t *testing.T) {
 	t.Parallel()
 	got := linterConcurrency(false)

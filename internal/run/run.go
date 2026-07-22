@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/1qh/lintmax-go/internal/caps"
 	"github.com/1qh/lintmax-go/internal/config"
 	"github.com/1qh/lintmax-go/internal/diag"
 	"github.com/1qh/lintmax-go/internal/dupconst"
@@ -54,6 +55,7 @@ const (
 	binDeadcode    = "deadcode"
 	nodeModulesDir = "node_modules"
 	binNilaway     = "nilaway"
+	binCapslock    = "capslock"
 	fileGoMod      = "go.mod"
 )
 
@@ -96,7 +98,10 @@ func toolVersion(ctx context.Context, binPath string) string {
 
 func reportBumps(ctx context.Context, installed []tools.Tool) {
 	prev := state.Load()
-	next := state.State{Versions: map[string]string{}, LastCheck: time.Time{}, LastGreenByCWD: prev.LastGreenByCWD}
+	next := state.State{
+		Versions: map[string]string{}, LastCheck: time.Time{},
+		LastGreenByCWD: prev.LastGreenByCWD, CapsByCWD: prev.CapsByCWD,
+	}
 	for _, tool := range installed {
 		ver := toolVersion(ctx, bin(tool.Name))
 		next.Versions[tool.Name] = ver
@@ -294,6 +299,33 @@ func transformGate(fix bool) ([]string, error) {
 	return changed, nil
 }
 
+func capabilityScan(ctx context.Context) string {
+	out, ok := runOut(ctx, bin(binCapslock), "-packages", allPackages, "-output=json")
+	if !ok {
+		return binCapslock + ":\n" + tailLines(out, tailDefault)
+	}
+	now := caps.Set(out)
+	if len(now) == 0 {
+		return ""
+	}
+	cwd, cwErr := os.Getwd()
+	if cwErr != nil {
+		return ""
+	}
+	st := state.Load()
+	before, seen := st.CapsByCWD[cwd]
+	st.CapsByCWD[cwd] = now
+	_ = st.Save() //nolint:errcheck // best-effort baseline
+	if !seen {
+		return ""
+	}
+	gained := caps.Gained(before, now)
+	if len(gained) == 0 {
+		return ""
+	}
+	return caps.Note(gained)
+}
+
 func deepScan(ctx context.Context) []string {
 	specs := []struct {
 		name string
@@ -301,9 +333,8 @@ func deepScan(ctx context.Context) []string {
 	}{
 		{name: "govulncheck", args: []string{allPackages}},
 		{name: "osv-scanner", args: []string{"scan", "source", "-r", "."}},
-		{name: "capslock", args: []string{"-packages", "./..."}},
 	}
-	results := make([]string, len(specs))
+	results := make([]string, len(specs)+1)
 	var wg sync.WaitGroup
 	for idx, spec := range specs {
 		wg.Go(func() {
@@ -313,6 +344,7 @@ func deepScan(ctx context.Context) []string {
 			}
 		})
 	}
+	wg.Go(func() { results[len(specs)] = capabilityScan(ctx) })
 	wg.Wait()
 	var notes []string
 	for _, r := range results {
