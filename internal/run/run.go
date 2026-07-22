@@ -378,7 +378,7 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 		results <- analysisResult(binDeadcode, diag.ParseLines(dcOut, binDeadcode), dcOut, dcOK)
 	})
 	wg.Go(func() {
-		nilOut, nilOK := runOut(ctx, bin(binNilaway), "-json", allPackages)
+		nilOut, nilOK := runOut(ctx, goCmd, "vet", "-vettool="+bin(binNilaway), "-json", allPackages)
 		results <- analysisResult(binNilaway, diag.ParseAnalysis(nilOut, binNilaway), nilOut, nilOK)
 	})
 	wg.Wait()

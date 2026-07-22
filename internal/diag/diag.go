@@ -83,11 +83,20 @@ func ParseGolangci(raw []byte) []Diagnostic {
 }
 
 func ParseAnalysis(raw []byte, linter string) []Diagnostic {
-	var byPkg map[string]map[string][]analysisItem
-	err := json.Unmarshal(raw, &byPkg)
-	if err != nil {
-		return nil
+	var diags []Diagnostic
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	for {
+		var byPkg map[string]map[string][]analysisItem
+		derr := dec.Decode(&byPkg)
+		if derr != nil {
+			break
+		}
+		diags = append(diags, analysisDiags(byPkg, linter)...)
 	}
+	return diags
+}
+
+func analysisDiags(byPkg map[string]map[string][]analysisItem, linter string) []Diagnostic {
 	var diags []Diagnostic
 	for _, byAnalyzer := range byPkg {
 		for analyzer, list := range byAnalyzer {
