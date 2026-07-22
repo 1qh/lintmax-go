@@ -25,6 +25,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
 	"github.com/1qh/lintmax-go/internal/idiom"
+	"github.com/1qh/lintmax-go/internal/stage"
 	"github.com/1qh/lintmax-go/internal/staleness"
 	"github.com/1qh/lintmax-go/internal/state"
 	"github.com/1qh/lintmax-go/internal/tools"
@@ -329,15 +330,10 @@ type collectResult struct {
 
 func analysisResult(name string, diags []diag.Diagnostic, out []byte, ok bool) collectResult {
 	res := collectResult{diags: diags, notes: nil}
-	if ok || len(diags) > 0 {
+	if !stage.Absent(ok, len(diags)) {
 		return res
 	}
-	detail := tailLines(out, tailDefault)
-	if strings.TrimSpace(detail) == "" {
-		detail = "no output — the analysis was killed before it could report " +
-			"(a large tree under memory pressure is the usual cause)"
-	}
-	res.notes = []string{name + " DID NOT RUN — its result is absent, not clean:\n" + detail}
+	res.notes = []string{stage.Note(name, tailLines(out, tailDefault))}
 	return res
 }
 
@@ -437,7 +433,7 @@ func Gate(ctx context.Context, fix bool) error {
 		ctx:       ctx,
 		timing:    timing,
 		fix:       fix,
-		skipCheck: !fix && !noCache,
+		skipCheck: !noCache,
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {
@@ -477,8 +473,10 @@ func (g *gateCtx) runGate() error {
 		notes = append(notes, "comments/blanks (run fix): "+strings.Join(changed, ", "))
 	}
 	err := report(diags, notes)
-	if err == nil && g.skipCheck && g.greenKey != "" {
-		persistGreen(g.greenKey)
+	if err == nil && g.skipCheck {
+		if green := computeTreeHash(); green != "" {
+			persistGreen(green)
+		}
 	}
 	return err
 }
