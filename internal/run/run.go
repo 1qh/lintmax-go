@@ -327,6 +327,20 @@ type collectResult struct {
 	notes []string
 }
 
+func analysisResult(name string, diags []diag.Diagnostic, out []byte, ok bool) collectResult {
+	res := collectResult{diags: diags, notes: nil}
+	if ok || len(diags) > 0 {
+		return res
+	}
+	detail := tailLines(out, tailDefault)
+	if strings.TrimSpace(detail) == "" {
+		detail = "no output — the analysis was killed before it could report " +
+			"(a large tree under memory pressure is the usual cause)"
+	}
+	res.notes = []string{name + " DID NOT RUN — its result is absent, not clean:\n" + detail}
+	return res
+}
+
 func inCI() bool {
 	return os.Getenv("GITHUB_ACTIONS") != emptyArg || os.Getenv("CI") != emptyArg
 }
@@ -364,12 +378,12 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 		results <- out
 	})
 	wg.Go(func() {
-		dcOut, _ := runCombined(ctx, bin(binDeadcode), "-test", allPackages)
-		results <- collectResult{diags: diag.ParseLines(dcOut, binDeadcode)} //nolint:exhaustruct // notes unused here
+		dcOut, dcOK := runCombined(ctx, bin(binDeadcode), "-test", allPackages)
+		results <- analysisResult(binDeadcode, diag.ParseLines(dcOut, binDeadcode), dcOut, dcOK)
 	})
 	wg.Go(func() {
-		nilOut, _ := runOut(ctx, bin(binNilaway), "-json", allPackages)
-		results <- collectResult{diags: diag.ParseAnalysis(nilOut, binNilaway)} //nolint:exhaustruct // notes unused here
+		nilOut, nilOK := runOut(ctx, bin(binNilaway), "-json", allPackages)
+		results <- analysisResult(binNilaway, diag.ParseAnalysis(nilOut, binNilaway), nilOut, nilOK)
 	})
 	wg.Wait()
 	close(results)
