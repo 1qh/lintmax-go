@@ -45,6 +45,11 @@ type golangciOut struct {
 	Issues []golangciIssue `json:"Issues"`
 }
 
+const (
+	derefMarker     = "accessed field"
+	moduleCacheMark = "@"
+)
+
 type analysisItem struct {
 	Posn    string `json:"posn"`
 	Message string `json:"message"`
@@ -96,11 +101,29 @@ func ParseAnalysis(raw []byte, linter string) []Diagnostic {
 	return diags
 }
 
+func foreignDeref(message string) bool {
+	found := false
+	for line := range strings.SplitSeq(message, "\n") {
+		before, _, ok := strings.Cut(line, derefMarker)
+		if !ok {
+			continue
+		}
+		found = true
+		if !strings.Contains(before, moduleCacheMark) {
+			return false
+		}
+	}
+	return found
+}
+
 func analysisDiags(byPkg map[string]map[string][]analysisItem, linter string) []Diagnostic {
 	var diags []Diagnostic
 	for _, byAnalyzer := range byPkg {
 		for analyzer, list := range byAnalyzer {
 			for _, it := range list {
+				if foreignDeref(it.Message) {
+					continue
+				}
 				f, l := splitPosn(it.Posn)
 				diags = append(diags, Diagnostic{File: f, Line: l, Linter: linter, Rule: analyzer})
 			}
@@ -157,21 +180,6 @@ func relpath(root, file string) string {
 		return rel
 	}
 	return filepath.Base(file)
-}
-
-func Outside(root, file string) bool {
-	if file == "" || !filepath.IsAbs(file) {
-		return false
-	}
-	return relOutside(root, file) && relOutside(resolvePath(root), resolvePath(file))
-}
-
-func relOutside(root, file string) bool {
-	rel, err := filepath.Rel(root, file)
-	if err != nil {
-		return true
-	}
-	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func Format(diags []Diagnostic, root string) string {

@@ -181,12 +181,16 @@ func writeConfig() (string, error) {
 	return path, nil
 }
 
-func exhaustructInclude() string {
+func modulePath() string {
 	data, err := os.ReadFile(fileGoMod)
 	if err != nil {
 		return emptyArg
 	}
-	mod := modfile.ModulePath(data)
+	return modfile.ModulePath(data)
+}
+
+func exhaustructInclude() string {
+	mod := modulePath()
 	if mod == emptyArg {
 		return emptyArg
 	}
@@ -415,20 +419,21 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 		results <- analysisResult(binDeadcode, diag.ParseLines(dcOut, binDeadcode), dcOut, dcOK)
 	})
 	wg.Go(func() {
-		nilOut, nilOK := runOut(ctx, goCmd, "vet", "-vettool="+bin(binNilaway), "-json", allPackages)
+		nilArgs := []string{"vet", "-vettool=" + bin(binNilaway), "-json"}
+		if mod := modulePath(); mod != emptyArg {
+			nilArgs = append(nilArgs, "-nilaway.include-pkgs="+mod)
+		}
+		nilArgs = append(nilArgs, allPackages)
+		nilOut, nilOK := runOut(ctx, goCmd, nilArgs...)
 		results <- analysisResult(binNilaway, diag.ParseAnalysis(nilOut, binNilaway), nilOut, nilOK)
 	})
 	wg.Wait()
 	close(results)
 	var diags []diag.Diagnostic
 	var notes []string
-	root, rootErr := os.Getwd()
 	for r := range results {
 		for i := range r.diags {
 			if strings.Contains(r.diags[i].File, nodeModulesDir) {
-				continue
-			}
-			if rootErr == nil && diag.Outside(root, r.diags[i].File) {
 				continue
 			}
 			diags = append(diags, r.diags[i])
