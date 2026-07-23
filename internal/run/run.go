@@ -369,6 +369,15 @@ type collectResult struct {
 	notes []string
 }
 
+func runNilaway(ctx context.Context) ([]byte, bool) {
+	args := []string{"vet", "-vettool=" + bin(binNilaway), "-json", allPackages}
+	out, ok := runOut(ctx, goCmd, args...)
+	if ok || len(out) > 0 {
+		return out, ok
+	}
+	return runOut(ctx, goCmd, args...)
+}
+
 func analysisResult(name string, diags []diag.Diagnostic, out []byte, ok bool) collectResult {
 	res := collectResult{diags: diags, notes: nil}
 	if !stage.Absent(ok, len(diags)) {
@@ -419,12 +428,7 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 		results <- analysisResult(binDeadcode, diag.ParseLines(dcOut, binDeadcode), dcOut, dcOK)
 	})
 	wg.Go(func() {
-		nilArgs := []string{"vet", "-vettool=" + bin(binNilaway), "-json"}
-		if mod := modulePath(); mod != emptyArg {
-			nilArgs = append(nilArgs, "-nilaway.include-pkgs="+mod)
-		}
-		nilArgs = append(nilArgs, allPackages)
-		nilOut, nilOK := runOut(ctx, goCmd, nilArgs...)
+		nilOut, nilOK := runNilaway(ctx)
 		results <- analysisResult(binNilaway, diag.ParseAnalysis(nilOut, binNilaway), nilOut, nilOK)
 	})
 	wg.Wait()
