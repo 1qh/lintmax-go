@@ -159,6 +159,21 @@ func relpath(root, file string) string {
 	return filepath.Base(file)
 }
 
+func Outside(root, file string) bool {
+	if file == "" || !filepath.IsAbs(file) {
+		return false
+	}
+	return relOutside(root, file) && relOutside(resolvePath(root), resolvePath(file))
+}
+
+func relOutside(root, file string) bool {
+	rel, err := filepath.Rel(root, file)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func Format(diags []Diagnostic, root string) string {
 	seen := map[string]bool{}
 	byFile := map[string]map[string][]int{}

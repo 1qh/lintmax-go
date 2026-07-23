@@ -422,9 +422,13 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	close(results)
 	var diags []diag.Diagnostic
 	var notes []string
+	root, rootErr := os.Getwd()
 	for r := range results {
 		for i := range r.diags {
 			if strings.Contains(r.diags[i].File, nodeModulesDir) {
+				continue
+			}
+			if rootErr == nil && diag.Outside(root, r.diags[i].File) {
 				continue
 			}
 			diags = append(diags, r.diags[i])
