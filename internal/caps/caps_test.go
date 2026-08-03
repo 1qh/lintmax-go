@@ -40,7 +40,7 @@ func TestSetKeepsDistinctPairsAndDiscardsCallPaths(t *testing.T) {
 func TestSetRefusesToInventAnEmptySetFromGarbage(t *testing.T) {
 	t.Parallel()
 	if got := caps.Set([]byte("not json at all")); got != nil {
-		t.Fatalf("unparseable output must yield nil, not an empty set, got %v", got)
+		t.Fatalf("unparsable output must yield nil, not an empty set, got %v", got)
 	}
 }
 

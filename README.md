@@ -50,15 +50,15 @@ The tool maintains itself — you never type a maintenance command. Every gate r
 
 ## What runs
 
-| Layer | Tool | Catches |
-| --- | --- | --- |
+| Layer              | Tool                         | Catches                                                                            |
+| ------------------ | ---------------------------- | ---------------------------------------------------------------------------------- |
 | comments + compact | native (go/scanner + go/ast) | deletes all comments except directives; removes blank lines inside function bodies |
-| format | gofumpt → gci → golines | strict format, deterministic imports, line length 123 |
-| lint | golangci-lint `default: all` | ~115 linters, all internal checks maxed, error-or-off |
-| nil-safety | nilaway | nil panics (the TS-strict-null gap) |
-| dead code | deadcode | whole-program unreachable funcs |
-| tests | `go test -race -shuffle=on` | data races, test-order coupling |
-| deep | govulncheck + osv-scanner | reachability + lockfile CVEs |
+| format             | gofumpt → gci → golines      | strict format, deterministic imports, line length 123                              |
+| lint               | golangci-lint `default: all` | ~115 linters, all internal checks maxed, error-or-off                              |
+| nil-safety         | nilaway                      | nil panics (the TS-strict-null gap)                                                |
+| dead code          | deadcode                     | whole-program unreachable funcs                                                    |
+| tests              | `go test -race -shuffle=on`  | data races, test-order coupling                                                    |
+| deep               | govulncheck + osv-scanner    | reachability + lockfile CVEs                                                       |
 
 ## Parity with lintmax
 
@@ -67,7 +67,7 @@ Mirrors lintmax (TypeScript): every rule **error or off** (never warn), `default
 Two hard limits Go's gofmt imposes that lintmax doesn't hit (cannot be overridden without abandoning gofmt):
 
 - **Tabs, not spaces** — gofmt mandates tabs; `tab_width=2` makes them render identically to lintmax's 2-space.
-- **Top-level blank lines** — gofmt forces a blank after `package`, around imports, and between top-level declarations. Blank lines *inside* function bodies are removed (true "no empty lines between statements"); the top-level ones are gofmt law.
+- **Top-level blank lines** — gofmt forces a blank after `package`, around imports, and between top-level declarations. Blank lines _inside_ function bodies are removed (true "no empty lines between statements"); the top-level ones are gofmt law.
 
 ## Earned disables
 

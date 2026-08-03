@@ -8,7 +8,7 @@ The strictness contract lintmax-go enforces, and the rules that govern it.
 2. **Never stale.** No version is pinned. Every tool is fetched `@latest` each run; `default: all` auto-enables new linters the day golangci ships them. You ride the bleeding edge and fix-forward.
 3. **Error or off, never warn.** Every finding fails the gate. There is no warning tier (parity with lintmax `warnToError`).
 4. **Fix the code, don't suppress.** When a rule fires, the first move is to satisfy it. Suppression (`//nolint:rule // reason`) is for genuinely unavoidable, isolated cases and always carries a reason — `nolintlint` enforces that.
-5. **Disable nothing up front.** The disable list starts empty. Each entry is *earned* by a concrete conflict found on real code, and documented with its reason in `internal/config/golangci.yml`.
+5. **Disable nothing up front.** The disable list starts empty. Each entry is _earned_ by a concrete conflict found on real code, and documented with its reason in `internal/config/golangci.yml`.
 
 ## One exhaustive gate
 
@@ -30,4 +30,4 @@ The current earned set falls in two buckets:
 ## Hard gofmt limits (cannot be overridden)
 
 - **Tabs, not spaces.** gofmt mandates tabs; `.editorconfig tab_width=2` makes them render like lintmax's 2-space.
-- **Top-level blank lines.** gofmt forces blanks after `package`, around imports, and between top-level declarations. lintmax-go removes blank lines *inside* function bodies (true "no empty lines between statements"); the top-level ones are gofmt law.
+- **Top-level blank lines.** gofmt forces blanks after `package`, around imports, and between top-level declarations. lintmax-go removes blank lines _inside_ function bodies (true "no empty lines between statements"); the top-level ones are gofmt law.

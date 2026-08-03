@@ -26,6 +26,7 @@ import (
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
 	"github.com/1qh/lintmax-go/internal/idiom"
+	"github.com/1qh/lintmax-go/internal/repo"
 	"github.com/1qh/lintmax-go/internal/shell"
 	"github.com/1qh/lintmax-go/internal/stage"
 	"github.com/1qh/lintmax-go/internal/staleness"
@@ -559,6 +560,10 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	topWG.Go(func() {
 		shellNotes = timePhase3(g.timing, "shell", func() []string { return shell.Gate(g.ctx, ".", g.fix) })
 	})
+	var repoNotes []string
+	topWG.Go(func() {
+		repoNotes = timePhase3(g.timing, "repo", func() []string { return repo.Gate(g.ctx, ".", g.fix) })
+	})
 	var dupIssues []dupconst.Issue
 	var dupErr error
 	topWG.Go(func() {
@@ -606,6 +611,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	}
 	notes = append(notes, deepNotes...)
 	notes = append(notes, shellNotes...)
+	notes = append(notes, repoNotes...)
 	return diags, notes
 }
 

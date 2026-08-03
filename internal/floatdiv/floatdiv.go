@@ -103,7 +103,7 @@ func riskyDenominator(y ast.Expr) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if name, lok := lenCallText(arg); lok {
+	if name, lenOK := lenCallText(arg); lenOK {
 		return name, true
 	}
 	if id, idok := arg.(*ast.Ident); idok {

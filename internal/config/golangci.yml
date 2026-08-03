@@ -18,10 +18,10 @@ linters:
     # Disables are EARNED — each rule below has a documented structural conflict with our locked
     # policy. Audit pass 2026-05-26 re-enabled tagliatelle/varnamelen/goconst/funlen/depguard/
     # gochecknoglobals/testpackage as legitimate strictness; the remaining 5 stay off below.
-    - wsl              # whitespace around blocks; direct conflict with compact-style policy
-    - wsl_v5           # successor of wsl; same conflict
-    - nlreturn         # blank-before-return; direct conflict with compact-style policy
-    - gomodguard       # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
+    - wsl # whitespace around blocks; direct conflict with compact-style policy
+    - wsl_v5 # successor of wsl; same conflict
+    - nlreturn # blank-before-return; direct conflict with compact-style policy
+    - gomodguard # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
   settings:
     goconst:
       ignore-calls: false
@@ -33,7 +33,7 @@ linters:
       # lintmax derives it from go.mod, no consumer file. unreadable go.mod -> ON unscoped.
       include: []
     mnd:
-      ignored-numbers: ['0', '1']
+      ignored-numbers: ["0", "1"]
     errcheck:
       check-type-assertions: true
       check-blank: true
@@ -52,7 +52,7 @@ linters:
     staticcheck:
       checks:
         - all
-        - -ST1000  # EARNED: comment-strip removes package comments; rule demands them
+        - -ST1000 # EARNED: comment-strip removes package comments; rule demands them
     lll:
       # EARNED: align lll with golines/revive width (123); default 120 conflicts with the formatter.
       line-length: 123
@@ -164,13 +164,13 @@ linters:
     # codegen output (sqlc / templ): committed, regenerated, never hand-edited — deterministic
     # path exclusion so findings never depend on golangci's generated-file-filter cache state.
     paths:
-      - '(^|/)node_modules/'
+      - "(^|/)node_modules/"
       - '\.sql\.go$'
       - '_templ\.go$'
     rules:
       # EARNED: CLI binaries (cli/, cmd/) ARE the bootstrap layer; fmt.Print to stdout + os.Getenv
       # for raw flags ARE the legitimate exception. Strictness applies to library code only.
-      - path: '(^|/)(cli|cmd)/'
+      - path: "(^|/)(cli|cmd)/"
         linters:
           - forbidigo
       # EARNED: fuzz files MUST be in the same package as the target (Go fuzz convention) — testpackage rule is wrong for fuzz.

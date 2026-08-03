@@ -18,7 +18,7 @@ const localFinding = `{"m":{"nilaway":[{"posn":"/repo/store.go:40:2","message":"
 	"`New()`" + ` lacking guarding\n\t- /repo/store.go:40:2: result 0 of ` + "`New()`" + ` accessed field ` +
 	"`Bucket`" + `\n"}]}}`
 
-func TestANilFlowDereferencedOnlyInsideADependencyIsNotThisRepositorysFinding(t *testing.T) {
+func TestANilFlowDereferencedOnlyInsideADependencyIsNotThisRepositoriesFinding(t *testing.T) {
 	t.Parallel()
 	if got := diag.ParseAnalysis([]byte(foreignFinding), linterNilaway); len(got) != 0 {
 		t.Fatalf("a dependency-only dereference must not reach the gate, got %d", len(got))
