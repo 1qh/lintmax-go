@@ -139,12 +139,14 @@ func generated(root string) []string {
 	return found
 }
 
+// dprint takes ONE `--excludes` carrying every pattern; repeating the flag is refused outright with
+// `cannot be used multiple times`, which fails the stage rather than excluding anything.
 func dprintArgs(action, cfg string, skip []string) []string {
 	args := []string{action, configFlag, cfg}
-	for _, one := range skip {
-		args = append(args, "--excludes", one)
+	if len(skip) == 0 {
+		return args
 	}
-	return args
+	return append(append(args, "--excludes"), skip...)
 }
 
 func Gate(ctx context.Context, root string, fix bool) []string {

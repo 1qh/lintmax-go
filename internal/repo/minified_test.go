@@ -82,9 +82,12 @@ func TestAGeneratedArtifactIsExcludedFromTheFormatter(t *testing.T) {
 
 func TestEveryExcludedArtifactReachesTheFormatterInvocation(t *testing.T) {
 	t.Parallel()
-	args := dprintArgs("check", "/tmp/cfg.json", []string{"server/assets/app.css"})
+	args := dprintArgs("check", "/tmp/cfg.json", []string{"server/assets/app.css", "server/assets/collection.js"})
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "--excludes server/assets/app.css") {
-		t.Fatalf("an exclusion the walk found must reach the formatter, or it is a list nobody reads: %v", args)
+	if !strings.Contains(joined, "--excludes server/assets/app.css server/assets/collection.js") {
+		t.Fatalf("every exclusion must reach the formatter under ONE flag, because dprint refuses a repeated one outright: %v", args)
+	}
+	if strings.Count(joined, "--excludes") != 1 {
+		t.Fatalf("dprint refuses `--excludes` used more than once, so a repeated flag fails the stage instead of excluding: %v", args)
 	}
 }
