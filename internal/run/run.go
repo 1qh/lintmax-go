@@ -60,7 +60,9 @@ const (
 	nodeModulesDir = "node_modules"
 	binNilaway     = "nilaway"
 	binCapslock    = "capslock"
-	fileGoMod      = "go.mod"
+	fileGoMod               = "go.mod"
+	golangciLockRetryWait   = 30 * time.Second
+	golangciParallelRefusal = "parallel golangci-lint is running"
 )
 
 var ErrGate = errors.New("gate failed")
@@ -136,7 +138,12 @@ func pinnedVersion(name string) string {
 	if pin == "" {
 		return latestVersion
 	}
-	fmt.Fprintf(os.Stderr, "pinned %s %s (a pin is a logged exception; the consumer owns its revisit trigger)\n", name, pin)
+	fmt.Fprintf(
+		os.Stderr,
+		"pinned %s %s (a pin is a logged exception; the consumer owns its revisit trigger)\n",
+		name,
+		pin,
+	)
 	return pin
 }
 
@@ -152,7 +159,12 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	var wg sync.WaitGroup
 	for _, tool := range tools.All {
 		wg.Go(func() {
-			cmd := exec.CommandContext(ctx, goCmd, cmdInstall, tool.Pkg+"@"+pinnedVersion(tool.Name)) //nolint:gosec // static registry paths
+			cmd := exec.CommandContext(
+				ctx,
+				goCmd,
+				cmdInstall,
+				tool.Pkg+"@"+pinnedVersion(tool.Name),
+			) //nolint:gosec // static registry paths
 			var buf bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &buf, &buf
 			err := cmd.Run()
@@ -259,6 +271,14 @@ func runOut(ctx context.Context, name string, args ...string) ([]byte, bool) {
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
 	return out.Bytes(), err == nil
+}
+
+func runSeparate(ctx context.Context, name string, args ...string) ([]byte, []byte, bool) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // fixed tool invocations
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	return out.Bytes(), errb.Bytes(), err == nil
 }
 
 func runCombined(ctx context.Context, name string, args ...string) ([]byte, bool) {
@@ -428,11 +448,27 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		gcOut, gcOK := runOut(ctx, bin(golangciBin), gcArgs...)
+		gcOut, gcErr, gcOK := runSeparate(ctx, bin(golangciBin), gcArgs...)
 		gcDiags := diag.ParseGolangci(gcOut)
-		out := collectResult{diags: gcDiags} //nolint:exhaustruct // notes set below only on failure
+		gcRetried := false
+		if !gcOK && len(gcDiags) == 0 && strings.Contains(string(gcErr), golangciParallelRefusal) {
+			timer := time.NewTimer(golangciLockRetryWait)
+			select {
+			case <-timer.C:
+				gcRetried = true
+				gcOut, gcErr, gcOK = runSeparate(ctx, bin(golangciBin), gcArgs...)
+			case <-ctx.Done():
+				timer.Stop()
+			}
+			gcDiags = diag.ParseGolangci(gcOut)
+		}
+		out := collectResult{diags: gcDiags, notes: nil}
 		if !gcOK && len(gcDiags) == 0 {
-			out.notes = []string{"golangci-lint:\n" + tailLines(gcOut, tailDefault)}
+			if gcRetried && strings.Contains(string(gcErr), golangciParallelRefusal) {
+				out.notes = []string{"golangci-lint refused to run because another instance holds its lock — this is a CONTENDED HOST rather than a finding, and re-running once the other run finishes is the answer:\n" + tailLines(gcErr, tailDefault)}
+			} else {
+				out.notes = []string{"golangci-lint:\n" + tailLines(gcErr, tailDefault)}
+			}
 		}
 		results <- out
 	})
@@ -492,11 +528,13 @@ func Gate(ctx context.Context, fix bool) error {
 	}
 	timing := os.Getenv("LINTMAX_TIMING") == "1"
 	noCache := os.Getenv("LINTMAX_NO_CACHE") == "1"
-	g := &gateCtx{ //nolint:exhaustruct // cfg+greenKey populated by later gate stages
+	g := &gateCtx{
 		ctx:       ctx,
 		timing:    timing,
 		fix:       fix,
+		cfg:       "",
 		skipCheck: !noCache,
+		greenKey:  "",
 	}
 	g.greenKey = timePhase3(g.timing, "treehash", computeTreeHash)
 	if g.tryCached() {

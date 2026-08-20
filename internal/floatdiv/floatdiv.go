@@ -35,8 +35,11 @@ type Issue struct {
 }
 
 func Scan(ctx context.Context, root string) ([]Issue, error) {
-	cfg := &packages.Config{Mode: loadMode, Dir: root, Context: ctx}
-	pkgs, err := packages.Load(cfg, "./...")
+	var cfg packages.Config
+	cfg.Mode = loadMode
+	cfg.Context = ctx
+	cfg.Dir = root
+	pkgs, err := packages.Load(&cfg, "./...")
 	if err != nil {
 		return nil, fmt.Errorf("floatdiv load packages: %w", err)
 	}
@@ -86,14 +89,14 @@ func riskyDivision(
 ) (Issue, bool) {
 	bin, ok := n.(*ast.BinaryExpr)
 	if !ok || bin.Op != token.QUO || !isFloat(p.TypesInfo.TypeOf(bin)) {
-		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
+		return Issue{Pos: "", Operand: "", Func: ""}, false
 	}
 	den, risky := riskyDenominator(bin.Y)
 	if !risky {
-		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
+		return Issue{Pos: "", Operand: "", Func: ""}, false
 	}
 	if _, found := guarded[den]; found {
-		return Issue{}, false //nolint:exhaustruct // zero sentinel ignored when ok=false
+		return Issue{Pos: "", Operand: "", Func: ""}, false
 	}
 	return Issue{Pos: p.Fset.Position(bin.Pos()).String(), Operand: den, Func: fn.Name.Name}, true
 }

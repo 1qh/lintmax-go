@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/1qh/lintmax-go/internal/run"
 	"github.com/1qh/lintmax-go/internal/config"
+	"github.com/1qh/lintmax-go/internal/run"
 	"github.com/1qh/lintmax-go/internal/version"
 )
 
@@ -69,13 +69,15 @@ func commands() map[string]func(context.Context) int {
 	return map[string]func(context.Context) int{
 		"version": func(context.Context) int { fmt.Fprintln(os.Stdout, version.Current()); return exitOK },
 		"rules":   rulesCmd,
-		// A CONSUMER THAT MEASURES A PINNED TOOL MUST RUN IT THE WAY THIS GATE DOES, or it measures the
-		// vendor default and answers about a configuration nobody ships — so the embedded config has one
-		// home and is READ from here rather than copied into whoever needs it.
-		"config": func(context.Context) int { os.Stdout.Write(config.GolangCI); return exitOK },
+		"config":  configCmd,
 		cmdFix:    func(ctx context.Context) int { return gateCmd(ctx, true) },
 		"check":   func(ctx context.Context) int { return gateCmd(ctx, false) },
 	}
+}
+
+func configCmd(context.Context) int {
+	_, _ = os.Stdout.Write(config.GolangCI) //nolint:errcheck // reason: config output has no recoverable destination error
+	return exitOK
 }
 
 func dispatch(ctx context.Context, cmd string) int {

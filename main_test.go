@@ -30,8 +30,6 @@ func TestReportNilIsOK(t *testing.T) {
 	}
 }
 
-// A consumer measuring a pinned tool reads this config rather than copying it, so the verb must emit
-// the same bytes the gate runs — an empty answer would send that consumer to the vendor default.
 func TestConfigVerbPrintsTheGatesOwnConfig(t *testing.T) {
 	t.Parallel()
 	if len(config.GolangCI) == 0 {

@@ -55,10 +55,6 @@ func Scripts(dir string) ([]string, error) {
 	return found, nil
 }
 
-// THE SHELL STAGE IS THE SAME WHOLE-TREE CLASS `repo.WholeTreeRequested` gates, and it is far the
-// largest — measured on one consumer at 3,618 shellcheck findings across 40 scripts, none of them
-// from the change under test, which blocks every commit in that repository until the baseline is
-// ground. Gating it here rather than at the call site is what stops the next stage shipping ungated.
 func Gate(ctx context.Context, dir string, fix bool) []string {
 	if !repo.WholeTreeRequested() {
 		return nil

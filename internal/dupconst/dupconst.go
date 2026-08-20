@@ -28,12 +28,11 @@ type Issue struct {
 }
 
 func Scan(ctx context.Context, root string) ([]Issue, error) {
-	cfg := &packages.Config{
-		Mode:    packages.NeedTypes | packages.NeedName | packages.NeedDeps | packages.NeedImports,
-		Dir:     root,
-		Context: ctx,
-	}
-	pkgs, err := packages.Load(cfg, "./...")
+	var cfg packages.Config
+	cfg.Mode = packages.NeedTypes | packages.NeedName | packages.NeedDeps | packages.NeedImports
+	cfg.Context = ctx
+	cfg.Dir = root
+	pkgs, err := packages.Load(&cfg, "./...")
 	if err != nil {
 		return nil, fmt.Errorf("dupconst load packages: %w", err)
 	}

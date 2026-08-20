@@ -1,4 +1,4 @@
-package run
+package run_test
 
 import (
 	"os"
@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// A WHOLE-TREE STAGE WALKS THE REPOSITORY ROOT RATHER THAN THE CHANGE, so one that ships without the
-// opt-in gate blocks every commit in a consumer on a baseline nobody in that repository introduced.
-// The subject is DERIVED from run.go's own call sites rather than listed, so a stage added later is
-// covered without anybody widening a list.
 func TestEveryWholeTreeStageHonoursTheOptIn(t *testing.T) {
 	t.Parallel()
 	body, err := os.ReadFile("run.go")
@@ -24,6 +20,7 @@ func TestEveryWholeTreeStageHonoursTheOptIn(t *testing.T) {
 	}
 	for _, site := range sites {
 		pkg := site[1]
+		//nolint:gosec // reason: the path is assembled from locally discovered repository package names
 		src, readErr := os.ReadFile(filepath.Join("..", pkg, pkg+".go"))
 		if readErr != nil {
 			t.Fatalf("reading the %s stage: %v", pkg, readErr)

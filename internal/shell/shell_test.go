@@ -14,6 +14,7 @@ const (
 	broken   = "#!/bin/sh\nif [ $1 = x ]; then\necho \"$UNSET_ONE\"\nfi\n"
 	ownName  = "own.sh"
 	toolName = "shellcheck"
+	allFilesEnv = "LINTMAX_ALL_FILES"
 )
 
 func write(t *testing.T, dir, name, body string) {
@@ -44,7 +45,7 @@ func TestScriptsSkipsVendoredTrees(t *testing.T) {
 }
 
 func TestGateIsSilentWhenNoScriptExists(t *testing.T) {
-	t.Setenv("LINTMAX_ALL_FILES", "1")
+	t.Setenv(allFilesEnv, "1")
 	notes := shell.Gate(t.Context(), t.TempDir(), false)
 	if notes != nil {
 		t.Fatalf("want no notes for a tree with no scripts, got %v", notes)
@@ -52,7 +53,7 @@ func TestGateIsSilentWhenNoScriptExists(t *testing.T) {
 }
 
 func TestGateReportsAPlantedDefect(t *testing.T) {
-	t.Setenv("LINTMAX_ALL_FILES", "1")
+	t.Setenv(allFilesEnv, "1")
 	dir := t.TempDir()
 	write(t, dir, "bad.sh", broken)
 	notes := shell.Gate(t.Context(), dir, false)
@@ -63,7 +64,7 @@ func TestGateReportsAPlantedDefect(t *testing.T) {
 }
 
 func TestGateSaysSoWhenATrueToolIsAbsent(t *testing.T) {
-	t.Setenv("LINTMAX_ALL_FILES", "1")
+	t.Setenv(allFilesEnv, "1")
 	dir := t.TempDir()
 	write(t, dir, "one.sh", clean)
 	t.Setenv("PATH", t.TempDir())
@@ -74,12 +75,11 @@ func TestGateSaysSoWhenATrueToolIsAbsent(t *testing.T) {
 	}
 }
 
-// The stage judges nothing until a repository opts in, so a consumer that has not ground its shell
-// baseline is never blocked by a finding its change did not introduce.
 func TestGateIsSilentUntilTheRepositoryOptsIn(t *testing.T) {
-	t.Setenv("LINTMAX_ALL_FILES", "")
+	t.Setenv(allFilesEnv, "")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "planted.sh"), []byte("#!/bin/sh\necho $undefined\n"), 0o600); err != nil {
+	err := os.WriteFile(filepath.Join(dir, "planted.sh"), []byte("#!/bin/sh\necho $undefined\n"), 0o600)
+	if err != nil {
 		t.Fatalf("planting a script: %v", err)
 	}
 	if notes := shell.Gate(t.Context(), dir, false); len(notes) != 0 {

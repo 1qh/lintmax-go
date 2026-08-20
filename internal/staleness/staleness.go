@@ -181,7 +181,9 @@ func doReleaseFetchUncached(ctx context.Context, owner, name, action string) (*g
 	if tok := os.Getenv(envToken); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
-	resp, derr := (&http.Client{Timeout: httpTimeout}).Do(req)
+	var client http.Client
+	client.Timeout = httpTimeout
+	resp, derr := client.Do(req)
 	if derr != nil {
 		return nil, fmt.Errorf("fetch: %w", derr)
 	}
