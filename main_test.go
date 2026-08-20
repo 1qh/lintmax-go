@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/1qh/lintmax-go/internal/config"
+)
 
 func TestRealMainNoArgsIsUsage(t *testing.T) {
 	t.Parallel()
@@ -22,5 +27,17 @@ func TestReportNilIsOK(t *testing.T) {
 	t.Parallel()
 	if got := report(nil); got != exitOK {
 		t.Fatalf("nil err: got exit %d, want %d", got, exitOK)
+	}
+}
+
+// A consumer measuring a pinned tool reads this config rather than copying it, so the verb must emit
+// the same bytes the gate runs — an empty answer would send that consumer to the vendor default.
+func TestConfigVerbPrintsTheGatesOwnConfig(t *testing.T) {
+	t.Parallel()
+	if len(config.GolangCI) == 0 {
+		t.Fatal("the embedded golangci config is empty, so every consumer of the config verb measures the vendor default")
+	}
+	if !strings.Contains(string(config.GolangCI), "linters") {
+		t.Error("the embedded config declares no linters section, so it cannot be the config this gate runs")
 	}
 }
