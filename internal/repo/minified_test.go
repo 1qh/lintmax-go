@@ -91,3 +91,17 @@ func TestEveryExcludedArtifactReachesTheFormatterInvocation(t *testing.T) {
 		t.Fatalf("dprint refuses `--excludes` used more than once, so a repeated flag fails the stage instead of excluding: %v", args)
 	}
 }
+
+func TestTheWholeTreeStagesAreOptInUntilAskedFor(t *testing.T) {
+	t.Setenv("LINTMAX_ALL_FILES", "")
+	if WholeTreeRequested() {
+		t.Fatal("a repository that never asked must keep the gate it shipped with, or a release blocks every commit on an inherited baseline")
+	}
+	if notes := Gate(t.Context(), t.TempDir(), false); notes != nil {
+		t.Fatalf("an unasked whole-tree stage must contribute no finding at all: %v", notes)
+	}
+	t.Setenv("LINTMAX_ALL_FILES", "1")
+	if !WholeTreeRequested() {
+		t.Fatal("a repository that asks for the whole-tree stages must get them, or the capability is unreachable")
+	}
+}

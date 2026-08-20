@@ -24,6 +24,8 @@ const (
 
 const generatedProbeBytes = 256
 
+const allFilesEnv = "LINTMAX_ALL_FILES"
+
 func minified() []string {
 	return []string{"*.min.js", "*.min.css", "*.min.mjs", "*.min.map", "*.lock"}
 }
@@ -149,7 +151,20 @@ func dprintArgs(action, cfg string, skip []string) []string {
 	return append(append(args, "--excludes"), skip...)
 }
 
+// THE WHOLE-TREE STAGES ARE OPT-IN UNTIL A REPOSITORY HAS GROUND ITS BASELINE, because a gate that
+// starts judging every non-Go file the day it is released BLOCKS EVERY COMMIT on findings nobody in
+// that repository introduced — measured on one consumer at 2,187 shellcheck findings and 170 files of
+// formatter churn, none of them from the change under test. The capability is unchanged and the
+// consumer turns it on when its baseline is clear, which is the ratchet rather than a cut: a repo
+// that never enables it keeps exactly the gate it shipped with.
+func WholeTreeRequested() bool {
+	return strings.TrimSpace(os.Getenv(allFilesEnv)) != ""
+}
+
 func Gate(ctx context.Context, root string, fix bool) []string {
+	if !WholeTreeRequested() {
+		return nil
+	}
 	dir, err := os.MkdirTemp("", "lintmax-go-repo-")
 	if err != nil {
 		return []string{"repo config: " + err.Error()}
