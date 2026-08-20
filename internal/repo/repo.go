@@ -21,8 +21,24 @@ const (
 	configMode  = 0o600
 )
 
+func minified() []string {
+	return []string{"*.min.js", "*.min.css", "*.min.mjs", "*.min.map", "*.lock"}
+}
+
+func unauthored() []string {
+	return []string{"testdata", "node_modules", "vendor", "dist", "target"}
+}
+
+func quoted(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, "\""+value+"\"")
+	}
+	return out
+}
+
 func excludes() []string {
-	return []string{
+	return append([]string{
 		"**/.git",
 		"**/node_modules",
 		"**/vendor",
@@ -30,7 +46,15 @@ func excludes() []string {
 		"**/dist",
 		"**/target",
 		"**/go.sum",
+	}, prefixed(minified())...)
+}
+
+func prefixed(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, "**/"+value)
 	}
+	return out
 }
 
 func Config(ctx context.Context, dir string) (string, error) {
@@ -50,12 +74,26 @@ func Config(ctx context.Context, dir string) (string, error) {
 	if dprintErr != nil {
 		return "", fmt.Errorf("writing the dprint config: %w", dprintErr)
 	}
-	typos := "[default]\ncheck-filename = true\ncheck-file = true\n"
+	typos := "[default]\ncheck-filename = true\ncheck-file = true\n" +
+		"[files]\nextend-exclude = [" + strings.Join(quoted(append(minified(), unauthored()...)), ", ") + "]\n"
 	typosErr := os.WriteFile(filepath.Join(dir, typosFile), []byte(typos), configMode)
 	if typosErr != nil {
 		return "", fmt.Errorf("writing the typos config: %w", typosErr)
 	}
 	return dir, nil
+}
+
+// A project may supply the DATA a speller needs to be correct about it — its own domain vocabulary —
+// through the tool's OWN config file rather than a lintmax-specific one, so there is no second home
+// for a fact `typos` already owns. It supplies data only: no rule can be turned off from there,
+// because the file replaces the word list rather than the check.
+func typosConfig(root, cfg string) string {
+	own := filepath.Join(root, typosFile)
+	_, err := os.Stat(own)
+	if err != nil {
+		return filepath.Join(cfg, typosFile)
+	}
+	return own
 }
 
 func Gate(ctx context.Context, root string, fix bool) []string {
@@ -77,7 +115,7 @@ func Gate(ctx context.Context, root string, fix bool) []string {
 		args []string
 	}{
 		{name: dprintBin, args: []string{action, configFlag, filepath.Join(cfg, dprintFile)}},
-		{name: typosBin, args: []string{configFlag, filepath.Join(cfg, typosFile), root}},
+		{name: typosBin, args: []string{configFlag, typosConfig(root, cfg), root}},
 	}
 	var notes []string
 	for _, spec := range specs {
