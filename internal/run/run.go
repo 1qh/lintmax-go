@@ -47,6 +47,8 @@ const (
 	binSubdir      = "bin"
 	cmdInstall     = "install"
 	golangciBin    = "golangci-lint"
+	pinEnvPrefix   = "LINTMAX_PIN_"
+	latestVersion  = "latest"
 	allPackages    = "./..."
 	transformErr   = "transform: %w"
 	phaseFmt       = "  %-12s %v\n"
@@ -129,6 +131,15 @@ func toolsPresent() bool {
 	return true
 }
 
+func pinnedVersion(name string) string {
+	pin := strings.TrimSpace(os.Getenv(pinEnvPrefix + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))))
+	if pin == "" {
+		return latestVersion
+	}
+	fmt.Fprintf(os.Stderr, "pinned %s %s (a pin is a logged exception; the consumer owns its revisit trigger)\n", name, pin)
+	return pin
+}
+
 func EnsureLatest(ctx context.Context, force bool) error {
 	if !force && !inCI() && state.Load().Fresh(refreshTTL) && toolsPresent() {
 		return nil
@@ -141,7 +152,7 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	var wg sync.WaitGroup
 	for _, tool := range tools.All {
 		wg.Go(func() {
-			cmd := exec.CommandContext(ctx, goCmd, cmdInstall, tool.Pkg+"@latest") //nolint:gosec // static registry paths
+			cmd := exec.CommandContext(ctx, goCmd, cmdInstall, tool.Pkg+"@"+pinnedVersion(tool.Name)) //nolint:gosec // static registry paths
 			var buf bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &buf, &buf
 			err := cmd.Run()
