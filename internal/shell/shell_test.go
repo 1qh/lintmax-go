@@ -44,7 +44,7 @@ func TestScriptsSkipsVendoredTrees(t *testing.T) {
 }
 
 func TestGateIsSilentWhenNoScriptExists(t *testing.T) {
-	t.Parallel()
+	t.Setenv("LINTMAX_ALL_FILES", "1")
 	notes := shell.Gate(t.Context(), t.TempDir(), false)
 	if notes != nil {
 		t.Fatalf("want no notes for a tree with no scripts, got %v", notes)
@@ -52,7 +52,7 @@ func TestGateIsSilentWhenNoScriptExists(t *testing.T) {
 }
 
 func TestGateReportsAPlantedDefect(t *testing.T) {
-	t.Parallel()
+	t.Setenv("LINTMAX_ALL_FILES", "1")
 	dir := t.TempDir()
 	write(t, dir, "bad.sh", broken)
 	notes := shell.Gate(t.Context(), dir, false)
@@ -63,6 +63,7 @@ func TestGateReportsAPlantedDefect(t *testing.T) {
 }
 
 func TestGateSaysSoWhenATrueToolIsAbsent(t *testing.T) {
+	t.Setenv("LINTMAX_ALL_FILES", "1")
 	dir := t.TempDir()
 	write(t, dir, "one.sh", clean)
 	t.Setenv("PATH", t.TempDir())
@@ -70,5 +71,18 @@ func TestGateSaysSoWhenATrueToolIsAbsent(t *testing.T) {
 	joined := strings.Join(notes, "\n")
 	if !strings.Contains(joined, "not installed") || !strings.Contains(joined, "1 shell script") {
 		t.Fatalf("an absent tool must report what went unchecked, got %v", notes)
+	}
+}
+
+// The stage judges nothing until a repository opts in, so a consumer that has not ground its shell
+// baseline is never blocked by a finding its change did not introduce.
+func TestGateIsSilentUntilTheRepositoryOptsIn(t *testing.T) {
+	t.Setenv("LINTMAX_ALL_FILES", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "planted.sh"), []byte("#!/bin/sh\necho $undefined\n"), 0o600); err != nil {
+		t.Fatalf("planting a script: %v", err)
+	}
+	if notes := shell.Gate(t.Context(), dir, false); len(notes) != 0 {
+		t.Errorf("an opted-out repository must be judged by nothing, got %v", notes)
 	}
 }
