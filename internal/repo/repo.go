@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,8 @@ const (
 	configFlag  = "--config"
 	configMode  = 0o600
 )
+
+const generatedProbeBytes = 256
 
 func minified() []string {
 	return []string{"*.min.js", "*.min.css", "*.min.mjs", "*.min.map", "*.lock"}
@@ -96,6 +99,54 @@ func typosConfig(root, cfg string) string {
 	return own
 }
 
+// A GENERATED ARTIFACT IS NOT AUTHORED PROSE, and a formatter that cannot parse one fails the whole
+// stage rather than skipping it — measured on a Tailwind stylesheet whose own banner says it is
+// generated. The marker is the file's own first line, which is a convention every generator already
+// follows, so nothing has to be listed by hand and a new artifact is covered the day it appears.
+func generated(root string) []string {
+	var found []string
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error { //nolint:errcheck // reason: a tree we cannot walk simply contributes no exclusions
+		if err != nil || entry.IsDir() {
+			return nil //nolint:nilerr // reason: an unreadable entry is skipped rather than failing the gate
+		}
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".css", ".js", ".mjs", ".ts":
+		default:
+			return nil
+		}
+		handle, openErr := os.Open(path)
+		if openErr != nil {
+			return nil
+		}
+		defer func() { _ = handle.Close() }() //nolint:errcheck // reason: read-only probe
+		head := make([]byte, generatedProbeBytes)
+		read, _ := handle.Read(head) //nolint:errcheck // reason: a short read still carries the banner
+		first := string(head[:read])
+		if line, _, cut := strings.Cut(first, "\n"); cut || line != "" {
+			lower := strings.ToLower(line)
+			for _, marker := range []string{"/*!", "code generated", "do not edit", "@generated"} {
+				if strings.Contains(lower, marker) {
+					relative, relErr := filepath.Rel(root, path)
+					if relErr == nil {
+						found = append(found, relative)
+					}
+					break
+				}
+			}
+		}
+		return nil
+	})
+	return found
+}
+
+func dprintArgs(action, cfg string, skip []string) []string {
+	args := []string{action, configFlag, cfg}
+	for _, one := range skip {
+		args = append(args, "--excludes", one)
+	}
+	return args
+}
+
 func Gate(ctx context.Context, root string, fix bool) []string {
 	dir, err := os.MkdirTemp("", "lintmax-go-repo-")
 	if err != nil {
@@ -114,7 +165,7 @@ func Gate(ctx context.Context, root string, fix bool) []string {
 		name string
 		args []string
 	}{
-		{name: dprintBin, args: []string{action, configFlag, filepath.Join(cfg, dprintFile)}},
+		{name: dprintBin, args: dprintArgs(action, filepath.Join(cfg, dprintFile), generated(root))},
 		{name: typosBin, args: []string{configFlag, typosConfig(root, cfg), root}},
 	}
 	var notes []string

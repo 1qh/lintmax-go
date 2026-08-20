@@ -62,3 +62,29 @@ func TestAProjectsOwnTyposConfigWins(t *testing.T) {
 		t.Fatalf("a project must be able to supply its own domain vocabulary, or a real product term reads as a typo for ever: %q", got)
 	}
 }
+
+func TestAGeneratedArtifactIsExcludedFromTheFormatter(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	banner := filepath.Join(root, "app.css")
+	if err := os.WriteFile(banner, []byte("/*! tailwindcss v4 */\n.a{color:red}"), configMode); err != nil {
+		t.Fatalf("write the generated stylesheet: %v", err)
+	}
+	authored := filepath.Join(root, "hand.css")
+	if err := os.WriteFile(authored, []byte(".a { color: red }\n"), configMode); err != nil {
+		t.Fatalf("write the authored stylesheet: %v", err)
+	}
+	found := generated(root)
+	if len(found) != 1 || found[0] != "app.css" {
+		t.Fatalf("a file whose own banner says it is generated must be excluded, or the formatter fails the whole stage on output nobody wrote: %v", found)
+	}
+}
+
+func TestEveryExcludedArtifactReachesTheFormatterInvocation(t *testing.T) {
+	t.Parallel()
+	args := dprintArgs("check", "/tmp/cfg.json", []string{"server/assets/app.css"})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--excludes server/assets/app.css") {
+		t.Fatalf("an exclusion the walk found must reach the formatter, or it is a list nobody reads: %v", args)
+	}
+}
