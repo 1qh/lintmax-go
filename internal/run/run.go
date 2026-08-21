@@ -38,28 +38,28 @@ import (
 )
 
 const (
-	emptyArg       = ""
-	goCmd          = "go"
-	configMode     = 0o600
-	dirPerm        = 0o755
-	refreshTTL     = 24 * time.Hour
-	cmdTest        = "test"
-	binSubdir      = "bin"
-	cmdInstall     = "install"
-	golangciBin    = "golangci-lint"
-	pinEnvPrefix   = "LINTMAX_PIN_"
-	latestVersion  = "latest"
-	allPackages    = "./..."
-	transformErr   = "transform: %w"
-	phaseFmt       = "  %-12s %v\n"
-	tailDefault    = 15
-	tailTest       = 20
-	minParallel    = 2
-	cfgFlag        = "--config"
-	binDeadcode    = "deadcode"
-	nodeModulesDir = "node_modules"
-	binNilaway     = "nilaway"
-	binCapslock    = "capslock"
+	emptyArg                = ""
+	goCmd                   = "go"
+	configMode              = 0o600
+	dirPerm                 = 0o755
+	refreshTTL              = 24 * time.Hour
+	cmdTest                 = "test"
+	binSubdir               = "bin"
+	cmdInstall              = "install"
+	golangciBin             = "golangci-lint"
+	pinEnvPrefix            = "LINTMAX_PIN_"
+	latestVersion           = "latest"
+	allPackages             = "./..."
+	transformErr            = "transform: %w"
+	phaseFmt                = "  %-12s %v\n"
+	tailDefault             = 15
+	tailTest                = 20
+	minParallel             = 2
+	cfgFlag                 = "--config"
+	binDeadcode             = "deadcode"
+	nodeModulesDir          = "node_modules"
+	binNilaway              = "nilaway"
+	binCapslock             = "capslock"
 	fileGoMod               = "go.mod"
 	golangciLockRetryWait   = 30 * time.Second
 	golangciParallelRefusal = "parallel golangci-lint is running"
@@ -188,6 +188,80 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	return nil
 }
 
+// dropUnknownLinters removes a disable entry the RESOLVED golangci-lint does not know, because it
+// refuses the whole run with `unknown linters` rather than ignoring the name — so a disable written
+// for a newer release breaks every consumer holding a pin, which is exactly the consumer most likely
+// to have pinned BECAUSE that newer release is broken.
+// minKnownLinters guards against a truncated or failed `help linters` read: a short list would
+// silently drop every disable entry, which is a strictness loss wearing a compatibility fix.
+const minKnownLinters = 50
+
+func dropUnknownLinters(cfg string) string {
+	known := knownLinterNames()
+	if len(known) == 0 {
+		return cfg
+	}
+	return dropUnknownLintersWith(cfg, known)
+}
+
+func dropUnknownLintersWith(cfg string, known map[string]bool) string {
+	// ONLY the `linters: disable:` block. Every other `- name` list in this config names a CHECK
+	// rather than a linter — gocritic's disabled-checks and govet's disable among them — so a
+	// tree-wide filter silently re-enables them: measured, it took a clean gate to 619 findings.
+	out := []string{}
+	inDisable := false
+	for _, line := range strings.Split(cfg, "\n") {
+		if strings.HasPrefix(line, "  disable:") {
+			inDisable = true
+			out = append(out, line)
+			continue
+		}
+		if inDisable && !strings.HasPrefix(line, "    ") {
+			inDisable = false
+		}
+		name := disabledLinterName(line)
+		if inDisable && name != "" && !known[name] {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+func disabledLinterName(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "- ") {
+		return emptyArg
+	}
+	named := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+	if cut := strings.Index(named, " #"); cut >= 0 {
+		named = strings.TrimSpace(named[:cut])
+	}
+	if named == emptyArg || strings.ContainsAny(named, ":'\"") {
+		return emptyArg
+	}
+	return named
+}
+
+func knownLinterNames() map[string]bool {
+	out, err := exec.Command("golangci-lint", "help", "linters").CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		known[strings.TrimSuffix(fields[0], ":")] = true
+	}
+	if len(known) < minKnownLinters {
+		return nil
+	}
+	return known
+}
+
 func writeConfig() (string, error) {
 	dir, err := os.MkdirTemp(emptyArg, "lintmax-go")
 	if err != nil {
@@ -195,7 +269,9 @@ func writeConfig() (string, error) {
 	}
 	path := filepath.Join(dir, ".golangci.yml")
 	cfg := string(config.GolangCI)
+	cfg = dropUnknownLinters(cfg)
 	cfg = strings.Replace(cfg, "      include: []\n", exhaustructInclude(), 1)
+	cfg = strings.Replace(cfg, "      enforce-patterns: []\n", exhaustructEnforce(), 1)
 	if extra := generatedExclusions(); extra != "" {
 		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
 	}
@@ -212,6 +288,17 @@ func modulePath() string {
 		return emptyArg
 	}
 	return modfile.ModulePath(data)
+}
+
+func exhaustructEnforce() string {
+	scoped := exhaustructInclude()
+	if scoped == emptyArg {
+		return emptyArg
+	}
+	// v5 checks EVERY struct literal unless explicit mode is on, so enforce-patterns alone
+	// narrows nothing — measured, 604 findings against stdlib literals with the patterns set.
+	return strings.Replace(scoped, "      include:\n", "      enforce-patterns:\n", 1) +
+		"      explicit-mode: true\n"
 }
 
 func exhaustructInclude() string {

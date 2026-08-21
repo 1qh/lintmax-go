@@ -22,6 +22,14 @@ linters:
     - wsl_v5 # successor of wsl; same conflict
     - nlreturn # blank-before-return; direct conflict with compact-style policy
     - gomodguard # deprecated v2.12.0; superseded by gomodguard_v2 (active in default:all)
+    # exhaustruct_v5 (v5.0.3) PANICS rather than reporting: `makeslice: cap out of range` inside
+    # its own internal/structure.(*Struct).skippedNamed, which aborts the whole goanalysis
+    # metalinter and takes every other rule's verdict with it — a crashing linter is strictly
+    # worse than an absent one, because the run says nothing at all. The DEPRECATED exhaustruct
+    # enforces the identical rule at the identical first-party scope and does not crash, so the
+    # bar does not move while this is off. TRIGGER TO REVISIT: a v5 release past 5.0.3, at which
+    # point re-enable and read whether the panic is gone before trusting a clean run.
+    - exhaustruct_v5 # upstream panic in 5.0.3; the deprecated exhaustruct covers the same rule
   settings:
     goconst:
       ignore-calls: false
@@ -32,6 +40,21 @@ linters:
       # strictness on the code that matters, no flood on stdlib/third-party T{}. configless:
       # lintmax derives it from go.mod, no consumer file. unreadable go.mod -> ON unscoped.
       include: []
+    exhaustruct_v5:
+      # The rule was renamed upstream and the OLD name is deprecated, so both are enabled under
+      # `default: all` and BOTH need the first-party scope. The v5 rule also RENAMED the field:
+      # `include` became `enforce-patterns`, and an unknown key is dropped in SILENCE rather than
+      # refused — measured, a consuming repo went from a clean gate to 604 findings, every one a
+      # stdlib literal such as `&http.Client{Timeout: t}`, while a config carrying `include` here
+      # looked correct. enforce-patterns is filled from go.mod exactly as include is above.
+      enforce-patterns: []
+    modernize:
+      # `newexpr` rewrites a pointer helper into Go 1.27's new(value), and the gate's OWN capability
+      # scanner cannot read that construct: capslock's SSA builder panics and then reports nothing at
+      # all for the whole package. Two tools in one gate disagreeing is an oscillation the consumer
+      # cannot win, so the rewrite is off until the scanner catches up.
+      disable:
+        - newexpr
     mnd:
       ignored-numbers: ["0", "1"]
     errcheck:
@@ -185,7 +208,11 @@ formatters:
     - golines
   settings:
     gofumpt:
-      extra-rules: true
+      # The `extra` block rather than the deprecated `extra-rules`: the FORMATTER ignores the old key
+      # while the LINTER still enforces it, so `fix` reports ok and `check` reports the same finding
+      # for ever — measured as two gofumpt findings that survived every fix run.
+      extra:
+        group-params: true
     golines:
       max-len: 123
 
