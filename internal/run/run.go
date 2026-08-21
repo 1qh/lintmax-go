@@ -60,6 +60,8 @@ const (
 	nodeModulesDir          = "node_modules"
 	binNilaway              = "nilaway"
 	binCapslock             = "capslock"
+	ssaPanicMarker          = "panic: unexpected expr"
+	capslockUnreadable      = "capslock: the SSA builder panicked on this source, so the capability scan could not run — x/tools does not yet build it. The scan is SKIPPED rather than reported as a finding, because a scanner that cannot read the package has nothing to say about it. Re-enable by removing this branch once x/tools builds the language version this project uses."
 	fileGoMod               = "go.mod"
 	golangciLockRetryWait   = 30 * time.Second
 	golangciParallelRefusal = "parallel golangci-lint is running"
@@ -424,9 +426,13 @@ func transformGate(fix bool) ([]string, error) {
 }
 
 func capabilityScan(ctx context.Context) string {
-	out, ok := runOut(ctx, bin(binCapslock), "-packages", allPackages, "-output=json")
+	out, errOut, ok := runSeparate(ctx, bin(binCapslock), "-packages", allPackages, "-output=json")
 	if !ok {
-		return binCapslock + ":\n" + tailLines(out, tailDefault)
+		if bytes.Contains(errOut, []byte(ssaPanicMarker)) {
+			fmt.Fprintln(os.Stderr, capslockUnreadable)
+			return ""
+		}
+		return binCapslock + ":\n" + tailLines(append(out, errOut...), tailDefault)
 	}
 	now := caps.Set(out)
 	if len(now) == 0 {
