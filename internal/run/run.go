@@ -530,8 +530,13 @@ func isolateCICache() {
 
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
 	isolateCICache()
+	// ABSOLUTE PATHS, because golangci reports a filename relative to each PACKAGE: a finding in
+	// `server/share.go` arrives as bare `share.go`, collides with a root `share.go`, and the display
+	// resolves it against the repo root — so the reported file is the WRONG one and the finding is
+	// unaddressable. MEASURED: several rounds hunting a switch-case defect in the wrong file, and one
+	// hand-built linter invocation that judged a different rule set while trying to locate it.
 	gcArgs := []string{
-		"run", cfgFlag, cfg,
+		"run", cfgFlag, cfg, "--path-mode=abs",
 		"--concurrency=" + strconv.Itoa(linterConcurrency(skipTestPhase())),
 		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
 	}
