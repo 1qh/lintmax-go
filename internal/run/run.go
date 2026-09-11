@@ -22,6 +22,7 @@ import (
 
 	"github.com/1qh/lintmax-go/internal/caps"
 	"github.com/1qh/lintmax-go/internal/config"
+	"github.com/1qh/lintmax-go/internal/deadconst"
 	"github.com/1qh/lintmax-go/internal/diag"
 	"github.com/1qh/lintmax-go/internal/dupconst"
 	"github.com/1qh/lintmax-go/internal/floatdiv"
@@ -41,7 +42,6 @@ const (
 	emptyArg                = ""
 	goCmd                   = "go"
 	configMode              = 0o600
-	dirPerm                 = 0o755
 	refreshTTL              = 24 * time.Hour
 	cmdTest                 = "test"
 	binSubdir               = "bin"
@@ -726,13 +726,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	topWG.Go(func() {
 		repoNotes = timePhase3(g.timing, "repo", func() []string { return repo.Gate(g.ctx, ".", g.fix) })
 	})
-	var dupIssues []dupconst.Issue
-	var dupErr error
-	topWG.Go(func() {
-		dupIssues, dupErr = timePhase(g.timing, "dupconst", func() ([]dupconst.Issue, error) {
-			return dupconst.Scan(g.ctx, ".")
-		})
-	})
+	consts := g.launchConstScans(&topWG)
 	var fdivIssues []floatdiv.Issue
 	var fdivErr error
 	topWG.Go(func() {
@@ -765,7 +759,8 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	if !testOK {
 		notes = append(notes, "go test:\n"+tailLines(testOut, tailTest))
 	}
-	notes = append(notes, depNotes(stale, staleErr, dupErr, dupIssues)...)
+	notes = append(notes, depNotes(stale, staleErr, consts.dupErr, consts.dup)...)
+	notes = append(notes, deadconstNotes(consts.deadErr, consts.dead)...)
 	notes = append(notes, fdivNotes(fdivErr, fdivIssues)...)
 	notes = append(notes, idiomNotes(idiomErr, idiomIssues)...)
 	if r := idiom.FormatScripts(scriptIssues); r != "" {
@@ -775,6 +770,28 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	notes = append(notes, shellNotes...)
 	notes = append(notes, repoNotes...)
 	return diags, notes
+}
+
+type constResults struct {
+	dup     []dupconst.Issue
+	dupErr  error
+	dead    []deadconst.Issue
+	deadErr error
+}
+
+func (g *gateCtx) launchConstScans(wg *sync.WaitGroup) *constResults {
+	var r constResults
+	wg.Go(func() {
+		r.dup, r.dupErr = timePhase(g.timing, "dupconst", func() ([]dupconst.Issue, error) {
+			return dupconst.Scan(g.ctx, ".")
+		})
+	})
+	wg.Go(func() {
+		r.dead, r.deadErr = timePhase(g.timing, "deadconst", func() ([]deadconst.Issue, error) {
+			return deadconst.Scan(g.ctx, ".")
+		})
+	})
+	return &r
 }
 
 func depNotes(stale []staleness.Issue, staleErr, dupErr error, dupIssues []dupconst.Issue) []string {
@@ -791,6 +808,17 @@ func depNotes(stale []staleness.Issue, staleErr, dupErr error, dupIssues []dupco
 	if rendered := dupconst.Format(dupIssues); rendered != "" {
 		notes = append(notes, fmt.Sprintf("%d duplicate-value const group(s) (collapse to one):\n%s",
 			len(dupIssues), rendered))
+	}
+	return notes
+}
+
+func deadconstNotes(err error, issues []deadconst.Issue) []string {
+	var notes []string
+	if err != nil {
+		notes = append(notes, "deadconst scan: "+err.Error())
+	}
+	if rendered := deadconst.Format(issues); rendered != "" {
+		notes = append(notes, fmt.Sprintf("%d unread constant(s) (delete, or read it):\n%s", len(issues), rendered))
 	}
 	return notes
 }
