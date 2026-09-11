@@ -27,8 +27,8 @@ linters:
     # metalinter and takes every other rule's verdict with it — a crashing linter is strictly
     # worse than an absent one, because the run says nothing at all. The DEPRECATED exhaustruct
     # enforces the identical rule at the identical first-party scope and does not crash, so the
-    # bar does not move while this is off. TRIGGER TO REVISIT: a v5 release past 5.0.3, at which
-    # point re-enable and read whether the panic is gone before trusting a clean run.
+    # bar does not move while this is off. TRIGGER TO REVISIT: golangci-lint's own go.mod pinning a
+    # v5 past 5.0.3 — an upstream v5 release alone changes nothing, since the bundled copy is what runs.
     - exhaustruct_v5 # upstream panic in 5.0.3; the deprecated exhaustruct covers the same rule
   settings:
     goconst:
