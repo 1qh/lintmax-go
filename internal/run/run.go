@@ -425,6 +425,10 @@ func transformGate(fix bool) ([]string, error) {
 	return changed, nil
 }
 
+func capsKey(cwd, analyser string) string {
+	return cwd + "\x00" + analyser
+}
+
 func capabilityScan(ctx context.Context) string {
 	out, errOut, ok := runSeparate(ctx, bin(binCapslock), "-packages", allPackages, "-output=json")
 	if !ok {
@@ -443,8 +447,14 @@ func capabilityScan(ctx context.Context) string {
 		return ""
 	}
 	st := state.Load()
-	before, seen := st.CapsByCWD[cwd]
-	st.CapsByCWD[cwd] = now
+	// The baseline is only meaningful against the analyser that produced it: this gate tracks tools at
+	// latest, so an upgraded capslock reports a wider set for unchanged code and a cwd-only key reads
+	// that as a GAIN. Keying on the version too makes an upgrade RESET the baseline rather than
+	// manufacture a finding, which is the difference between a check that fires on drift and one that
+	// fires on its own toolchain moving.
+	key := capsKey(cwd, st.Versions[binCapslock])
+	before, seen := st.CapsByCWD[key]
+	st.CapsByCWD[key] = now
 	_ = st.Save() //nolint:errcheck // best-effort baseline
 	if !seen {
 		return ""
