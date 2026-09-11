@@ -1,10 +1,10 @@
-package run
+package run //nolint:testpackage // reason: exercises unexported pinnedVersion
 
 import "testing"
 
 const (
-	golangciPinEnv = "LINTMAX_PIN_GOLANGCI_LINT"
-	golangciName   = "golangci-lint"
+	golangciPinEnv     = "LINTMAX_PIN_GOLANGCI_LINT"
+	golangciName       = "golangci-lint"
 	pinnedVersionValue = "v2.12.2"
 )
 

@@ -101,7 +101,7 @@ func generated(root string) []string {
 	found := make([]string, 0, generatedProbeBytes)
 	walkErr := filepath.WalkDir(
 		root,
-		func(path string, entry fs.DirEntry, err error) error { //nolint:errcheck // reason: a tree we cannot walk simply contributes no exclusions
+		func(path string, entry fs.DirEntry, err error) error {
 			if relative, ok := generatedRelative(root, path, entry, err); ok {
 				found = append(found, relative)
 			}
@@ -150,7 +150,11 @@ func generatedBanner(line string) bool {
 }
 
 func dprintArgs(action, cfg string, skip []string) []string {
-	args := make([]string, 3, 4+len(skip))
+	const (
+		dprintFixedArgs            = 3
+		dprintArgsWithExcludesFlag = 4
+	)
+	args := make([]string, dprintFixedArgs, dprintArgsWithExcludesFlag+len(skip))
 	args[0], args[1], args[2] = action, configFlag, cfg
 	if len(skip) == 0 {
 		return args

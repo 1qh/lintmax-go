@@ -47,6 +47,7 @@ const (
 	binSubdir               = "bin"
 	cmdInstall              = "install"
 	golangciBin             = "golangci-lint"
+	lintersSubcommand       = "linters"
 	pinEnvPrefix            = "LINTMAX_PIN_"
 	latestVersion           = "latest"
 	allPackages             = "./..."
@@ -61,11 +62,17 @@ const (
 	binNilaway              = "nilaway"
 	binCapslock             = "capslock"
 	ssaPanicMarker          = "panic: unexpected expr"
-	capslockUnreadable      = "capslock: the SSA builder panicked on this source, so the capability scan could not run — x/tools does not yet build it. The scan is SKIPPED rather than reported as a finding, because a scanner that cannot read the package has nothing to say about it. Re-enable by removing this branch once x/tools builds the language version this project uses."
 	fileGoMod               = "go.mod"
 	golangciLockRetryWait   = 30 * time.Second
+	knownLintersWait        = 30 * time.Second
 	golangciParallelRefusal = "parallel golangci-lint is running"
 )
+
+const capslockUnreadable = "capslock: the SSA builder panicked on this source, " +
+	"so the capability scan could not run — x/tools does not yet build it. " +
+	"The scan is SKIPPED rather than reported as a finding, " +
+	"because a scanner that cannot read the package has nothing to say about it. " +
+	"Re-enable by removing this branch once x/tools builds the language version this project uses."
 
 var ErrGate = errors.New("gate failed")
 
@@ -161,12 +168,12 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	var wg sync.WaitGroup
 	for _, tool := range tools.All {
 		wg.Go(func() {
-			cmd := exec.CommandContext(
+			cmd := exec.CommandContext( //nolint:gosec // reason: the gate spawns Go to install resolved linter packages
 				ctx,
 				goCmd,
 				cmdInstall,
 				tool.Pkg+"@"+pinnedVersion(tool.Name),
-			) //nolint:gosec // static registry paths
+			)
 			var buf bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &buf, &buf
 			err := cmd.Run()
@@ -190,16 +197,10 @@ func EnsureLatest(ctx context.Context, force bool) error {
 	return nil
 }
 
-// dropUnknownLinters removes a disable entry the RESOLVED golangci-lint does not know, because it
-// refuses the whole run with `unknown linters` rather than ignoring the name — so a disable written
-// for a newer release breaks every consumer holding a pin, which is exactly the consumer most likely
-// to have pinned BECAUSE that newer release is broken.
-// minKnownLinters guards against a truncated or failed `help linters` read: a short list would
-// silently drop every disable entry, which is a strictness loss wearing a compatibility fix.
 const minKnownLinters = 50
 
-func dropUnknownLinters(cfg string) string {
-	known := knownLinterNames()
+func dropUnknownLinters(ctx context.Context, cfg string) string {
+	known := knownLinterNames(ctx)
 	if len(known) == 0 {
 		return cfg
 	}
@@ -207,12 +208,9 @@ func dropUnknownLinters(cfg string) string {
 }
 
 func dropUnknownLintersWith(cfg string, known map[string]bool) string {
-	// ONLY the `linters: disable:` block. Every other `- name` list in this config names a CHECK
-	// rather than a linter — gocritic's disabled-checks and govet's disable among them — so a
-	// tree-wide filter silently re-enables them: measured, it took a clean gate to 619 findings.
 	out := []string{}
 	inDisable := false
-	for _, line := range strings.Split(cfg, "\n") {
+	for line := range strings.SplitSeq(cfg, "\n") {
 		if strings.HasPrefix(line, "  disable:") {
 			inDisable = true
 			out = append(out, line)
@@ -245,13 +243,15 @@ func disabledLinterName(line string) string {
 	return named
 }
 
-func knownLinterNames() map[string]bool {
-	out, err := exec.Command("golangci-lint", "help", "linters").CombinedOutput()
+func knownLinterNames(ctx context.Context) map[string]bool {
+	bounded, cancel := context.WithTimeout(ctx, knownLintersWait)
+	defer cancel()
+	out, err := exec.CommandContext(bounded, golangciBin, "help", lintersSubcommand).CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return nil
 	}
 	known := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
@@ -264,16 +264,20 @@ func knownLinterNames() map[string]bool {
 	return known
 }
 
-func writeConfig() (string, error) {
+func writeConfig(ctx context.Context) (string, error) {
+	return writeConfigForModule(ctx, modulePath())
+}
+
+func writeConfigForModule(ctx context.Context, mod string) (string, error) {
 	dir, err := os.MkdirTemp(emptyArg, "lintmax-go")
 	if err != nil {
 		return emptyArg, fmt.Errorf("temp dir: %w", err)
 	}
 	path := filepath.Join(dir, ".golangci.yml")
 	cfg := string(config.GolangCI)
-	cfg = dropUnknownLinters(cfg)
-	cfg = strings.Replace(cfg, "      include: []\n", exhaustructInclude(), 1)
-	cfg = strings.Replace(cfg, "      enforce-patterns: []\n", exhaustructEnforce(), 1)
+	cfg = dropUnknownLinters(ctx, cfg)
+	cfg = strings.Replace(cfg, "      include: []\n", exhaustructInclude(mod), 1)
+	cfg = strings.Replace(cfg, "      enforce-patterns: []\n", exhaustructEnforce(mod), 1)
 	if extra := generatedExclusions(); extra != "" {
 		cfg = strings.Replace(cfg, "    paths:\n", "    paths:\n"+extra, 1)
 	}
@@ -292,19 +296,16 @@ func modulePath() string {
 	return modfile.ModulePath(data)
 }
 
-func exhaustructEnforce() string {
-	scoped := exhaustructInclude()
+func exhaustructEnforce(mod string) string {
+	scoped := exhaustructInclude(mod)
 	if scoped == emptyArg {
 		return emptyArg
 	}
-	// v5 checks EVERY struct literal unless explicit mode is on, so enforce-patterns alone
-	// narrows nothing — measured, 604 findings against stdlib literals with the patterns set.
 	return strings.Replace(scoped, "      include:\n", "      enforce-patterns:\n", 1) +
 		"      explicit-mode: true\n"
 }
 
-func exhaustructInclude() string {
-	mod := modulePath()
+func exhaustructInclude(mod string) string {
 	if mod == emptyArg {
 		return emptyArg
 	}
@@ -397,11 +398,11 @@ func selfUpdate(ctx context.Context) {
 }
 
 func Rules(ctx context.Context) error {
-	cfg, err := writeConfig()
+	cfg, err := writeConfig(ctx)
 	if err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, bin(golangciBin), "linters", cfgFlag, cfg) //nolint:gosec // fixed invocation
+	cmd := exec.CommandContext(ctx, bin(golangciBin), lintersSubcommand, cfgFlag, cfg) //nolint:gosec // fixed invocation
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	runErr := cmd.Run()
 	if runErr != nil {
@@ -447,11 +448,6 @@ func capabilityScan(ctx context.Context) string {
 		return ""
 	}
 	st := state.Load()
-	// The baseline is only meaningful against the analyser that produced it: this gate tracks tools at
-	// latest, so an upgraded capslock reports a wider set for unchanged code and a cwd-only key reads
-	// that as a GAIN. Keying on the version too makes an upgrade RESET the baseline rather than
-	// manufacture a finding, which is the difference between a check that fires on drift and one that
-	// fires on its own toolchain moving.
 	key := capsKey(cwd, st.Versions[binCapslock])
 	before, seen := st.CapsByCWD[key]
 	st.CapsByCWD[key] = now
@@ -538,13 +534,44 @@ func isolateCICache() {
 	_ = os.Setenv("GOLANGCI_LINT_CACHE", dir) //nolint:errcheck // bootstrap cache isolation
 }
 
+func collectGolangci(ctx context.Context, args []string) collectResult {
+	out, errOut, ok := runSeparate(ctx, bin(golangciBin), args...)
+	diags := diag.ParseGolangci(out)
+	if ok || len(diags) > 0 {
+		return collectResult{diags: diags, notes: nil}
+	}
+	if !strings.Contains(string(errOut), golangciParallelRefusal) {
+		return collectResult{diags: diags, notes: []string{golangciBin + ":\n" + tailLines(errOut, tailDefault)}}
+	}
+	timer := time.NewTimer(golangciLockRetryWait)
+	select {
+	case <-timer.C:
+		return retryGolangci(ctx, args)
+	case <-ctx.Done():
+		timer.Stop()
+	}
+	return collectResult{diags: diags, notes: []string{golangciBin + ":\n" + tailLines(errOut, tailDefault)}}
+}
+
+func retryGolangci(ctx context.Context, args []string) collectResult {
+	out, errOut, ok := runSeparate(ctx, bin(golangciBin), args...)
+	diags := diag.ParseGolangci(out)
+	res := collectResult{diags: diags, notes: nil}
+	if ok || len(diags) > 0 {
+		return res
+	}
+	prefix := golangciBin + ":\n"
+	if strings.Contains(string(errOut), golangciParallelRefusal) {
+		prefix = "golangci-lint refused to run because another instance holds its lock — " +
+			"this is a CONTENDED HOST rather than a finding, " +
+			"and re-running once the other run finishes is the answer:\n"
+	}
+	res.notes = []string{prefix + tailLines(errOut, tailDefault)}
+	return res
+}
+
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
 	isolateCICache()
-	// ABSOLUTE PATHS, because golangci reports a filename relative to each PACKAGE: a finding in
-	// `server/share.go` arrives as bare `share.go`, collides with a root `share.go`, and the display
-	// resolves it against the repo root — so the reported file is the WRONG one and the finding is
-	// unaddressable. MEASURED: several rounds hunting a switch-case defect in the wrong file, and one
-	// hand-built linter invocation that judged a different rule set while trying to locate it.
 	gcArgs := []string{
 		"run", cfgFlag, cfg, "--path-mode=abs",
 		"--concurrency=" + strconv.Itoa(linterConcurrency(skipTestPhase())),
@@ -556,29 +583,7 @@ func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []st
 	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		gcOut, gcErr, gcOK := runSeparate(ctx, bin(golangciBin), gcArgs...)
-		gcDiags := diag.ParseGolangci(gcOut)
-		gcRetried := false
-		if !gcOK && len(gcDiags) == 0 && strings.Contains(string(gcErr), golangciParallelRefusal) {
-			timer := time.NewTimer(golangciLockRetryWait)
-			select {
-			case <-timer.C:
-				gcRetried = true
-				gcOut, gcErr, gcOK = runSeparate(ctx, bin(golangciBin), gcArgs...)
-			case <-ctx.Done():
-				timer.Stop()
-			}
-			gcDiags = diag.ParseGolangci(gcOut)
-		}
-		out := collectResult{diags: gcDiags, notes: nil}
-		if !gcOK && len(gcDiags) == 0 {
-			if gcRetried && strings.Contains(string(gcErr), golangciParallelRefusal) {
-				out.notes = []string{"golangci-lint refused to run because another instance holds its lock — this is a CONTENDED HOST rather than a finding, and re-running once the other run finishes is the answer:\n" + tailLines(gcErr, tailDefault)}
-			} else {
-				out.notes = []string{"golangci-lint:\n" + tailLines(gcErr, tailDefault)}
-			}
-		}
-		results <- out
+		results <- collectGolangci(ctx, gcArgs)
 	})
 	wg.Go(func() {
 		dcOut, dcOK := runCombined(ctx, bin(binDeadcode), "-test", allPackages)
@@ -648,7 +653,7 @@ func Gate(ctx context.Context, fix bool) error {
 	if g.tryCached() {
 		return nil
 	}
-	cfg, err := timePhase(g.timing, "writeConfig", writeConfig)
+	cfg, err := timePhase(g.timing, "writeConfig", func() (string, error) { return writeConfig(ctx) })
 	if err != nil {
 		return err
 	}

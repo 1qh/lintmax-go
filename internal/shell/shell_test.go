@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	clean    = "#!/bin/sh\nmain() {\n  echo ok\n}\nmain\n"
-	broken   = "#!/bin/sh\nif [ $1 = x ]; then\necho \"$UNSET_ONE\"\nfi\n"
-	ownName  = "own.sh"
-	toolName = "shellcheck"
+	clean       = "#!/bin/sh\nmain() {\n  echo ok\n}\nmain\n"
+	broken      = "#!/bin/sh\nif [ $1 = x ]; then\necho \"$UNSET_ONE\"\nfi\n"
+	ownName     = "own.sh"
+	toolName    = "shellcheck"
 	allFilesEnv = "LINTMAX_ALL_FILES"
 )
 

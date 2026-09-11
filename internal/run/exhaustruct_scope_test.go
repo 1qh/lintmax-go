@@ -1,18 +1,19 @@
-package run
+package run //nolint:testpackage // reason: exercises unexported writeConfigForModule
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestBothExhaustructNamesCarryTheFirstPartyScope(t *testing.T) {
-	t.Chdir("../..")
-	cfg, err := writeConfig()
+	t.Parallel()
+	cfg, err := writeConfigForModule(t.Context(), "example.com/scopefixture")
 	if err != nil {
 		t.Fatalf("write the config: %v", err)
 	}
-	raw, rerr := os.ReadFile(cfg)
+	raw, rerr := os.ReadFile(filepath.Clean(cfg))
 	if rerr != nil {
 		t.Fatalf("read the config: %v", rerr)
 	}

@@ -1,4 +1,4 @@
-package repo
+package repo //nolint:testpackage // reason: exercises unexported minified
 
 import (
 	"os"
@@ -30,7 +30,7 @@ func TestTheFormatterExcludesEveryMinifiedShapeTheSpellCheckDoes(t *testing.T) {
 	for _, one := range minified() {
 		if !strings.Contains(all, "**/"+one) {
 			t.Fatalf(
-				"the formatter and the spell check must exclude the same generated files, or one rewrites what the other refuses: %q",
+				"the formatter and spell check must exclude the same generated file: %q",
 				one,
 			)
 		}
@@ -48,7 +48,7 @@ func TestUnauthoredTreesAreExcludedFromTheSpellCheck(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf(
-				"a fixture tree is INPUT rather than authored prose, so %q must be excluded or every foreign word in a fixture reads as a typo",
+				"fixture tree %q must be excluded from spell checking unauthored prose",
 				want,
 			)
 		}
@@ -69,7 +69,7 @@ func TestAProjectsOwnTyposConfigWins(t *testing.T) {
 	}
 	if got := typosConfig(root, cfg); got != own {
 		t.Fatalf(
-			"a project must be able to supply its own domain vocabulary, or a real product term reads as a typo for ever: %q",
+			"a project's own domain vocabulary must take precedence: %q",
 			got,
 		)
 	}
@@ -91,7 +91,7 @@ func TestAGeneratedArtifactIsExcludedFromTheFormatter(t *testing.T) {
 	found := generated(root)
 	if len(found) != 1 || found[0] != artifactCSSName {
 		t.Fatalf(
-			"a file whose own banner says it is generated must be excluded, or the formatter fails the whole stage on output nobody wrote: %v",
+			"a file whose banner says it is generated must be excluded from formatting: %v",
 			found,
 		)
 	}
@@ -119,7 +119,7 @@ func TestTheWholeTreeStagesAreOptInUntilAskedFor(t *testing.T) {
 	t.Setenv(allFilesEnv, "")
 	if WholeTreeRequested() {
 		t.Fatal(
-			"a repository that never asked must keep the gate it shipped with, or a release blocks every commit on an inherited baseline",
+			"whole-tree stages must stay disabled until the repository requests them",
 		)
 	}
 	if notes := Gate(t.Context(), t.TempDir(), false); notes != nil {
