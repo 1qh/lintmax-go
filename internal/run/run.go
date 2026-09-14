@@ -523,6 +523,26 @@ func inCI() bool {
 	return os.Getenv("GITHUB_ACTIONS") != emptyArg || os.Getenv("CI") != emptyArg
 }
 
+func golangciArgs(cfg string, fix, ci bool) []string {
+	args := []string{
+		"run", cfgFlag, cfg, "--path-mode=abs",
+		"--concurrency=" + strconv.Itoa(linterConcurrency(skipTestPhase())),
+		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
+		golangciRunnerFlag(ci),
+	}
+	if fix {
+		args = append(args, "--fix")
+	}
+	return args
+}
+
+func golangciRunnerFlag(ci bool) string {
+	if ci {
+		return "--allow-parallel-runners"
+	}
+	return "--allow-serial-runners"
+}
+
 func isolateCICache() {
 	if !inCI() {
 		return
@@ -572,14 +592,7 @@ func retryGolangci(ctx context.Context, args []string) collectResult {
 
 func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
 	isolateCICache()
-	gcArgs := []string{
-		"run", cfgFlag, cfg, "--path-mode=abs",
-		"--concurrency=" + strconv.Itoa(linterConcurrency(skipTestPhase())),
-		"--output.json.path=stdout", "--output.text.path=" + os.DevNull,
-	}
-	if fix {
-		gcArgs = append(gcArgs, "--fix")
-	}
+	gcArgs := golangciArgs(cfg, fix, inCI())
 	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
