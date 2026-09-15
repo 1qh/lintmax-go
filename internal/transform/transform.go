@@ -72,24 +72,45 @@ func StripComments(src []byte) []byte {
 	return append(out, src[cursor:]...)
 }
 
-func bodySpans(src []byte) []commentRange {
+func bodySpans(src []byte) ([]commentRange, []commentRange) {
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, "", src, parser.SkipObjectResolution)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var spans []commentRange
+	var spans, keeps []commentRange
 	ast.Inspect(parsed, func(node ast.Node) bool {
-		fn, ok := node.(*ast.FuncDecl)
-		if ok && fn.Body != nil {
+		fn, isFunc := node.(*ast.FuncDecl)
+		if isFunc && fn.Body != nil {
 			spans = append(spans, commentRange{
 				start: fset.Position(fn.Body.Lbrace).Offset,
 				end:   fset.Position(fn.Body.Rbrace).Offset,
 			})
 		}
+		st, isStruct := node.(*ast.StructType)
+		if isStruct {
+			keeps = append(keeps, embeddedSeparators(fset, st)...)
+		}
 		return true
 	})
-	return spans
+	return spans, keeps
+}
+
+func embeddedSeparators(fset *token.FileSet, st *ast.StructType) []commentRange {
+	if st.Fields == nil {
+		return nil
+	}
+	var keeps []commentRange
+	fields := st.Fields.List
+	for i := 0; i+1 < len(fields); i++ {
+		if len(fields[i].Names) == 0 && len(fields[i+1].Names) > 0 {
+			keeps = append(keeps, commentRange{
+				start: fset.Position(fields[i].End()).Offset,
+				end:   fset.Position(fields[i+1].Pos()).Offset,
+			})
+		}
+	}
+	return keeps
 }
 
 func inSpan(spans []commentRange, off int) bool {
@@ -102,7 +123,7 @@ func inSpan(spans []commentRange, off int) bool {
 }
 
 func removeBodyBlanks(src []byte) []byte {
-	spans := bodySpans(src)
+	spans, keeps := bodySpans(src)
 	if len(spans) == 0 {
 		return src
 	}
@@ -113,7 +134,7 @@ func removeBodyBlanks(src []byte) []byte {
 			continue
 		}
 		line := src[lineStart:pos]
-		drop := len(bytes.TrimSpace(line)) == 0 && inSpan(spans, lineStart)
+		drop := len(bytes.TrimSpace(line)) == 0 && inSpan(spans, lineStart) && !inSpan(keeps, lineStart)
 		if !drop {
 			out = append(out, line...)
 			if pos < len(src) {

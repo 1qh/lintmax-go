@@ -57,3 +57,15 @@ func TestCompactKeepsTopLevelBlankBetweenDecls(t *testing.T) {
 		t.Fatalf("top-level blank (gofmt-mandated) must stay: got %q", got)
 	}
 }
+
+func TestCompactKeepsTheFormatterSeparatorAfterAnEmbeddedField(t *testing.T) {
+	t.Parallel()
+	src := "package p\n\nfunc f() {\n\ttype row struct {\n\t\tbase\n\n\t\tName string\n\t}\n\n\t_ = row{}\n}\n"
+	want := "package p\n\nfunc f() {\n\ttype row struct {\n\t\tbase\n\n\t\tName string\n\t}\n\t_ = row{}\n}\n"
+	if got := string(transform.Compact([]byte(src))); got != want {
+		t.Fatalf("Compact removed the separator the formatter re-adds:\n%q\nwant\n%q", got, want)
+	}
+	if again := string(transform.Compact([]byte(want))); again != want {
+		t.Fatalf("Compact is not a fixed point:\n%q", again)
+	}
+}
