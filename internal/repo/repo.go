@@ -149,17 +149,15 @@ func generatedBanner(line string) bool {
 	return false
 }
 
-func dprintArgs(action, cfg string, skip []string) []string {
-	const (
-		dprintFixedArgs            = 3
-		dprintArgsWithExcludesFlag = 4
-	)
-	args := make([]string, dprintFixedArgs, dprintArgsWithExcludesFlag+len(skip))
-	args[0], args[1], args[2] = action, configFlag, cfg
-	if len(skip) == 0 {
-		return args
+func dprintArgs(action, cfg, root string, skip []string) []string {
+	args := []string{action, configFlag, cfg}
+	if len(skip) > 0 {
+		args = append(args, "--excludes")
+		for _, rel := range skip {
+			args = append(args, filepath.Join(root, rel))
+		}
 	}
-	return append(append(args, "--excludes"), skip...)
+	return append(args, root)
 }
 
 func WholeTreeRequested() bool {
@@ -187,7 +185,7 @@ func Gate(ctx context.Context, root string, fix bool) []string {
 		name string
 		args []string
 	}{
-		{name: dprintBin, args: dprintArgs(action, filepath.Join(cfg, dprintFile), generated(root))},
+		{name: dprintBin, args: dprintArgs(action, filepath.Join(cfg, dprintFile), root, generated(root))},
 		{name: typosBin, args: []string{configFlag, typosConfig(root, cfg), root}},
 	}
 	var notes []string

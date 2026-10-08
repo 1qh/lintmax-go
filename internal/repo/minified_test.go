@@ -99,9 +99,10 @@ func TestAGeneratedArtifactIsExcludedFromTheFormatter(t *testing.T) {
 
 func TestEveryExcludedArtifactReachesTheFormatterInvocation(t *testing.T) {
 	t.Parallel()
-	args := dprintArgs("check", "/tmp/cfg.json", []string{"server/assets/app.css", "server/assets/collection.js"})
+	skip := []string{"server/assets/app.css", "server/assets/collection.js"}
+	args := dprintArgs(checkAction, "/tmp/cfg.json", projectRoot, skip)
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "--excludes server/assets/app.css server/assets/collection.js") {
+	if !strings.Contains(joined, "--excludes /repo/server/assets/app.css /repo/server/assets/collection.js") {
 		t.Fatalf(
 			"every exclusion must reach the formatter under ONE flag, because dprint refuses a repeated one outright: %v",
 			args,
@@ -128,5 +129,21 @@ func TestTheWholeTreeStagesAreOptInUntilAskedFor(t *testing.T) {
 	t.Setenv(allFilesEnv, "1")
 	if !WholeTreeRequested() {
 		t.Fatal("a repository that asks for the whole-tree stages must get them, or the capability is unreachable")
+	}
+}
+
+const (
+	projectRoot = "/repo"
+	checkAction = "check"
+)
+
+func TestTheFormatterWalksTheProjectNotItsConfigDirectory(t *testing.T) {
+	t.Parallel()
+	args := dprintArgs(checkAction, "/tmp/lintmax-go-repo-1/dprint.json", projectRoot, nil)
+	if args[len(args)-1] != projectRoot {
+		t.Fatalf(
+			"dprint resolves includes against its config's temp directory, so it never sees the project: %v",
+			args,
+		)
 	}
 }

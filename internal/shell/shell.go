@@ -32,7 +32,7 @@ func skipped(name string) bool {
 	}
 }
 
-func Scripts(dir string) ([]string, error) {
+func Scripts(ctx context.Context, dir string) ([]string, error) {
 	var found []string
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -52,14 +52,36 @@ func Scripts(dir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("walking %s for shell scripts: %w", dir, err)
 	}
-	return found, nil
+	return carriedOnly(ctx, dir, found), nil
+}
+
+func carriedOnly(ctx context.Context, dir string, found []string) []string {
+	argv := []string{"-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"}
+	//nolint:gosec // reason: fixed git argv; dir is the repo being linted
+	out, err := exec.CommandContext(ctx, "git", argv...).Output()
+	if err != nil {
+		return found
+	}
+	carried := make(map[string]bool)
+	for name := range strings.SplitSeq(string(out), "\x00") {
+		if name != "" {
+			carried[filepath.Clean(filepath.Join(dir, name))] = true
+		}
+	}
+	kept := found[:0]
+	for _, path := range found {
+		if carried[filepath.Clean(path)] {
+			kept = append(kept, path)
+		}
+	}
+	return kept
 }
 
 func Gate(ctx context.Context, dir string, fix bool) []string {
 	if !repo.WholeTreeRequested() {
 		return nil
 	}
-	scripts, err := Scripts(dir)
+	scripts, err := Scripts(ctx, dir)
 	if err != nil {
 		return []string{"shell scan: " + err.Error()}
 	}

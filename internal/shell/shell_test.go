@@ -2,6 +2,7 @@ package shell_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ const (
 	ownName     = "own.sh"
 	toolName    = "shellcheck"
 	allFilesEnv = "LINTMAX_ALL_FILES"
+	mirrorDir   = "mirror"
 )
 
 func write(t *testing.T, dir, name, body string) {
@@ -35,7 +37,7 @@ func TestScriptsSkipsVendoredTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, nested, "theirs.sh", clean)
-	found, scanErr := shell.Scripts(dir)
+	found, scanErr := shell.Scripts(t.Context(), dir)
 	if scanErr != nil {
 		t.Fatal(scanErr)
 	}
@@ -84,5 +86,29 @@ func TestGateIsSilentUntilTheRepositoryOptsIn(t *testing.T) {
 	}
 	if notes := shell.Gate(t.Context(), dir, false); len(notes) != 0 {
 		t.Errorf("an opted-out repository must be judged by nothing, got %v", notes)
+	}
+}
+
+func TestScriptsSkipsWhatVersionControlIgnores(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	//nolint:gosec // reason: fixed git argv against the test's own temp dir
+	out, initErr := exec.CommandContext(t.Context(), "git", "-C", dir, "init", "-q").CombinedOutput()
+	if initErr != nil {
+		t.Fatalf("git init: %v %s", initErr, out)
+	}
+	write(t, dir, ".gitignore", mirrorDir+"/\n")
+	mkErr := os.Mkdir(filepath.Join(dir, mirrorDir), 0o700)
+	if mkErr != nil {
+		t.Fatalf("mkdir: %v", mkErr)
+	}
+	write(t, dir, filepath.Join(mirrorDir, "synced.sh"), clean)
+	write(t, dir, ownName, clean)
+	found, err := shell.Scripts(t.Context(), dir)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if len(found) != 1 || filepath.Base(found[0]) != ownName {
+		t.Fatalf("a gitignored synced mirror must never be judged as the project's own script: %v", found)
 	}
 }
