@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	privateDirMode = 0o700
-	formattersKey  = "\nformatters:\n"
+	privateDirMode   = 0o700
+	formattersKey    = "\nformatters:\n"
+	replayConfigFile = ".lintmax-replay.yml"
+	offendingLinters = "offending linters: "
 )
 
 var ErrSnapshotSource = errors.New("cannot snapshot non-regular Go source")
@@ -28,6 +30,19 @@ type savedFile struct {
 }
 
 type fixSnapshot map[string]savedFile
+
+type verifiedFixSnapshot struct {
+	files fixSnapshot
+}
+
+type fixCommand func(context.Context, string, string, ...string) ([]byte, error)
+
+type fixReplay struct {
+	snapshot verifiedFixSnapshot
+	root     string
+	config   string
+	command  fixCommand
+}
 
 func snapshotTree(root string) (fixSnapshot, error) {
 	module, openErr := os.OpenRoot(root)
@@ -117,12 +132,31 @@ func writeSaved(root, path string, saved savedFile) error {
 }
 
 func verifyFix(ctx context.Context, root string) error {
+	return verifyFixPackages(ctx, root, []string{allPackages}, runFixCommand)
+}
+
+func runFixCommand(ctx context.Context, root, program string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext( //nolint:gosec // program comes only from goCmd or bin(golangciBin), never findings
+		ctx,
+		program,
+		args...)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return out, fmt.Errorf("autofix command: %w", err)
+	}
+	return out, nil
+}
+
+func verifyFixPackages(ctx context.Context, root string, packages []string, command fixCommand) error {
+	if len(packages) == 0 {
+		return nil
+	}
 	for _, action := range []string{"build", cmdVet} {
-		cmd := exec.CommandContext(ctx, goCmd, action, allPackages) //nolint:gosec // fixed Go validation commands
-		cmd.Dir = root
-		out, err := cmd.CombinedOutput()
+		args := append([]string{action}, packages...)
+		out, err := command(ctx, root, goCmd, args...)
 		if err != nil {
-			return fmt.Errorf("go %s %s: %w\n%s", action, allPackages, err, out)
+			return fmt.Errorf("go %s %s: %w\n%s", action, strings.Join(packages, " "), err, out)
 		}
 	}
 	return nil
@@ -150,7 +184,8 @@ func (g *gateCtx) safeFix() error {
 	validationErr := verifyFix(g.ctx, ".")
 	if validationErr != nil {
 		restoreErr := snapshot.restore(".")
-		culprits := g.offendingFixers(snapshot, before.diags)
+		proven := verifiedFixSnapshot{files: snapshot}
+		culprits := g.offendingFixers(proven, before.diags, validationErr, runFixCommand)
 		rollback := "restored the pre-fix snapshot"
 		if restoreErr != nil {
 			rollback = "rollback incomplete"
@@ -183,52 +218,119 @@ func autofixNames(findings []diag.Diagnostic, args []string) []string {
 	return names
 }
 
-func (g *gateCtx) offendingFixers(snapshot fixSnapshot, findings []diag.Diagnostic) string {
+func (g *gateCtx) offendingFixers(
+	snapshot verifiedFixSnapshot, findings []diag.Diagnostic, validationErr error, command fixCommand,
+) string {
 	names := autofixNames(findings, golangciArgs(g.cfg, true, inCI()))
-	bad := []string{}
-	for _, name := range names {
-		if g.replayFix(snapshot, name) {
-			bad = append(bad, name)
-		}
-	}
-	if len(bad) > 0 {
-		return "offending linters: " + strings.Join(bad, ", ")
-	}
-	return "combined fixes; candidate linters: " + strings.Join(names, ", ")
-}
-
-func (g *gateCtx) replayFix(snapshot fixSnapshot, name string) bool {
+	prioritizeFixers(names, findings, snapshot.files, validationErr)
+	fallback := "combined fixes; candidate linters: " + strings.Join(names, ", ")
 	root, tempErr := os.MkdirTemp(emptyArg, "lintmax-autofix-replay-")
 	if tempErr != nil {
-		return false
+		return fallback
 	}
 	defer func() { _ = os.RemoveAll(root) }() //nolint:errcheck // replay cleanup cannot affect the restored module
-	for path, saved := range snapshot {
-		writeErr := writeSaved(root, path, saved)
-		if writeErr != nil {
-			return false
-		}
-	}
-	baselineErr := verifyFix(g.ctx, root)
-	if baselineErr != nil {
-		return false
+	copyErr := snapshot.files.restore(root)
+	if copyErr != nil {
+		return fallback
 	}
 	raw, configErr := os.ReadFile(filepath.Clean(g.cfg))
 	if configErr != nil {
-		return false
+		return fallback
 	}
-	cfg := filepath.Join(root, ".lintmax-replay.yml")
-	replay, linter := replayConfig(string(raw), name)
-	writeErr := os.WriteFile(cfg, []byte(replay), configMode) //nolint:gosec // cfg is in the isolated replay
+	replay := fixReplay{snapshot: snapshot, root: root, config: string(raw), command: command}
+	bad := []string{}
+	incomplete := false
+	for _, name := range names {
+		broken, replayErr := replay.replayFix(g.ctx, name)
+		if replayErr != nil {
+			incomplete = true
+		}
+		if broken {
+			bad = append(bad, name)
+		}
+		restoreErr := snapshot.files.restore(root)
+		if restoreErr != nil {
+			return fallback
+		}
+	}
+	if len(bad) > 0 && !incomplete {
+		slices.Sort(bad)
+		return offendingLinters + strings.Join(bad, ", ")
+	}
+	return fallback
+}
+
+func prioritizeFixers(names []string, findings []diag.Diagnostic, snapshot fixSnapshot, validationErr error) {
+	if validationErr == nil {
+		return
+	}
+	priority := map[string]bool{}
+	root, rootErr := filepath.Abs(".")
+	if rootErr != nil {
+		return
+	}
+	for _, finding := range findings {
+		path := filepath.Clean(finding.File)
+		if filepath.IsAbs(path) {
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				continue
+			}
+			path = rel
+		}
+		if _, exists := snapshot[path]; exists && strings.Contains(validationErr.Error(), filepath.ToSlash(path)+":") {
+			priority[finding.Linter] = true
+		}
+	}
+	slices.SortStableFunc(names, func(left, right string) int {
+		if priority[left] == priority[right] {
+			return strings.Compare(left, right)
+		}
+		if priority[left] {
+			return -1
+		}
+		return 1
+	})
+}
+
+func (replay fixReplay) replayFix(ctx context.Context, name string) (bool, error) {
+	cfg := filepath.Join(replay.root, replayConfigFile)
+	raw, linter := replayConfig(replay.config, name)
+	writeErr := os.WriteFile(cfg, []byte(raw), configMode)
 	if writeErr != nil {
-		return false
+		return false, fmt.Errorf("replay config: %w", writeErr)
 	}
-	args := golangciArgs(cfg, false, inCI())
-	args = append(args, fixFlag, "--enable-only", linter)
-	cmd := exec.CommandContext(g.ctx, bin(golangciBin), args...) //nolint:gosec // replay a linter in an isolated snapshot
-	cmd.Dir = root
-	_ = cmd.Run() //nolint:errcheck // findings exit nonzero; compilation determines whether the fix is broken
-	return verifyFix(g.ctx, root) != nil
+	baseArgs := golangciArgs(cfg, false, inCI())
+	args := append([]string{baseArgs[0], fixFlag}, baseArgs[1:]...)
+	args = append(args, "--enable-only", linter)
+	_, _ = replay.command(ctx, replay.root, bin(golangciBin), args...) //nolint:errcheck // findings exit nonzero
+	current, scanErr := snapshotTree(replay.root)
+	if scanErr != nil {
+		return false, scanErr
+	}
+	packages := changedFixPackages(replay.snapshot.files, current)
+	return verifyFixPackages(ctx, replay.root, packages, replay.command) != nil, nil
+}
+
+func changedFixPackages(before, after fixSnapshot) []string {
+	dirs := map[string]bool{}
+	for _, pair := range [][2]fixSnapshot{{before, after}, {after, before}} {
+		for path, saved := range pair[0] {
+			if !strings.HasSuffix(path, goExt) {
+				continue
+			}
+			now, exists := pair[1][path]
+			if !exists || !bytes.Equal(saved.data, now.data) {
+				dirs["./"+filepath.ToSlash(filepath.Dir(path))] = true
+			}
+		}
+	}
+	packages := make([]string, 0, len(dirs))
+	for dir := range dirs {
+		packages = append(packages, dir)
+	}
+	slices.Sort(packages)
+	return packages
 }
 
 func replayConfig(cfg, name string) (string, string) {
