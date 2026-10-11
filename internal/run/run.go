@@ -44,6 +44,11 @@ const (
 	configMode              = 0o600
 	refreshTTL              = 24 * time.Hour
 	cmdTest                 = "test"
+	cmdVet                  = "vet"
+	fixFlag                 = "--fix"
+	disableFlag             = "--disable"
+	gitDir                  = ".git"
+	noinlineerrLinter       = "noinlineerr"
 	binSubdir               = "bin"
 	cmdInstall              = "install"
 	golangciBin             = "golangci-lint"
@@ -502,7 +507,7 @@ type collectResult struct {
 }
 
 func runNilaway(ctx context.Context) ([]byte, bool) {
-	args := []string{"vet", "-vettool=" + bin(binNilaway), "-json", allPackages}
+	args := []string{cmdVet, "-vettool=" + bin(binNilaway), "-json", allPackages}
 	out, ok := runOut(ctx, goCmd, args...)
 	if ok || len(out) > 0 {
 		return out, ok
@@ -531,7 +536,7 @@ func golangciArgs(cfg string, fix, ci bool) []string {
 		golangciRunnerFlag(ci),
 	}
 	if fix {
-		args = append(args, "--fix")
+		args = append(args, fixFlag, disableFlag, noinlineerrLinter)
 	}
 	return args
 }
@@ -590,9 +595,9 @@ func retryGolangci(ctx context.Context, args []string) collectResult {
 	return res
 }
 
-func collect(ctx context.Context, cfg string, fix bool) ([]diag.Diagnostic, []string) {
+func collect(ctx context.Context, cfg string) ([]diag.Diagnostic, []string) {
 	isolateCICache()
-	gcArgs := golangciArgs(cfg, fix, inCI())
+	gcArgs := golangciArgs(cfg, false, inCI())
 	results := make(chan collectResult, 3) //nolint:mnd // golangci + deadcode + nilaway, all always-on for security
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -629,7 +634,10 @@ func report(diags []diag.Diagnostic, notes []string) error {
 	}
 	out := diag.Format(diags, root)
 	if out == "" && len(notes) == 0 {
-		fmt.Fprintln(os.Stdout, "ok")
+		_, writeErr := fmt.Fprintln(os.Stdout, "ok")
+		if writeErr != nil {
+			return fmt.Errorf("write gate result: %w", writeErr)
+		}
 		return nil
 	}
 	fmt.Fprint(os.Stderr, out)
@@ -686,12 +694,18 @@ func (g *gateCtx) tryCached() bool {
 	if prev.LastGreenByCWD[cwd] != g.greenKey {
 		return false
 	}
-	fmt.Fprintln(os.Stdout, "ok (cached)")
-	return true
+	_, writeErr := fmt.Fprintln(os.Stdout, "ok (cached)")
+	return writeErr == nil
 }
 
 func (g *gateCtx) runGate() error {
-	changed, terr := timePhase(g.timing, "transform", func() ([]string, error) { return transformGate(g.fix) })
+	if g.fix {
+		fixErr := g.safeFix()
+		if fixErr != nil {
+			return fixErr
+		}
+	}
+	changed, terr := timePhase(g.timing, "transform", func() ([]string, error) { return transformGate(false) })
 	if terr != nil {
 		return terr
 	}
@@ -720,7 +734,7 @@ func (g *gateCtx) runParallel() ([]diag.Diagnostic, []string) {
 	var topWG sync.WaitGroup
 	topWG.Go(func() {
 		diags, notes = timePhase2(g.timing, "collect", func() ([]diag.Diagnostic, []string) {
-			return collect(g.ctx, g.cfg, g.fix)
+			return collect(g.ctx, g.cfg)
 		})
 	})
 	topWG.Go(func() {
@@ -945,7 +959,7 @@ func treeWalker(h hash.Hash) filepath.WalkFunc {
 }
 
 func skipNoise(name string) error {
-	if name == ".git" || name == "vendor" || name == "node_modules" || name == "dist" {
+	if name == gitDir || name == "vendor" || name == "node_modules" || name == "dist" {
 		return filepath.SkipDir
 	}
 	return nil
