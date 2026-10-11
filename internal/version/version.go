@@ -2,7 +2,7 @@ package version
 
 import "runtime/debug"
 
-const Release = "v0.25.9"
+const Release = "v0.25.10"
 
 const Dev = Release + " (devel)"
 

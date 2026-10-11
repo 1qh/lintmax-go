@@ -5,12 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/1qh/lintmax-go/internal/diag"
 )
@@ -20,6 +24,10 @@ const (
 	formattersKey    = "\nformatters:\n"
 	replayConfigFile = ".lintmax-replay.yml"
 	offendingLinters = "offending linters: "
+	embedDirective   = "//go:embed"
+	fileGoSum        = "go.sum"
+	fileGoWork       = "go.work"
+	fileGoWorkSum    = "go.work.sum"
 )
 
 var ErrSnapshotSource = errors.New("cannot snapshot non-regular Go source")
@@ -61,12 +69,151 @@ func snapshotTree(root string) (fixSnapshot, error) {
 			}
 			return nil
 		}
+		if !fixSnapshotFile(entry.Name()) {
+			return nil
+		}
 		return snapshot.save(module, path, entry)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("autofix snapshot: %w", err)
 	}
 	return snapshot, nil
+}
+
+func fixSnapshotFile(name string) bool {
+	return strings.HasSuffix(name, goExt) || name == fileGoMod || name == fileGoSum ||
+		name == fileGoWork || name == fileGoWorkSum
+}
+
+func (snapshot fixSnapshot) copyReplay(source, root string) error {
+	err := snapshot.restore(root)
+	if err != nil {
+		return err
+	}
+	module, err := os.OpenRoot(source)
+	if err != nil {
+		return fmt.Errorf("open replay source: %w", err)
+	}
+	defer func() { _ = module.Close() }() //nolint:errcheck // closing the read handle cannot affect replay contents
+	for path, saved := range snapshot {
+		if !strings.HasSuffix(path, goExt) {
+			continue
+		}
+		patterns, parseErr := replayEmbedPatterns(path, saved.data)
+		if parseErr != nil {
+			return parseErr
+		}
+		for _, pattern := range patterns {
+			copyErr := snapshot.copyEmbedPattern(module, source, root, filepath.Dir(path), pattern)
+			if copyErr != nil {
+				return copyErr
+			}
+		}
+	}
+	return nil
+}
+
+func replayEmbedPatterns(path string, data []byte) ([]string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, data, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse replay embeds %s: %w", path, err)
+	}
+	patterns := []string{}
+	for _, group := range file.Comments {
+		for _, comment := range group.List {
+			args, found := strings.CutPrefix(comment.Text, embedDirective)
+			if !found || args == "" || !unicode.IsSpace(rune(args[0])) {
+				continue
+			}
+			parsed, parseErr := splitEmbedPatterns(args)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			patterns = append(patterns, parsed...)
+		}
+	}
+	return patterns, nil
+}
+
+func splitEmbedPatterns(args string) ([]string, error) {
+	patterns := []string{}
+	for args = strings.TrimSpace(args); args != ""; args = strings.TrimSpace(args) {
+		pattern, rest, err := nextEmbedPattern(args)
+		if err != nil {
+			return nil, err
+		}
+		patterns = append(patterns, pattern)
+		args = rest
+	}
+	return patterns, nil
+}
+
+func nextEmbedPattern(args string) (string, string, error) {
+	if args[0] == '"' || args[0] == '`' {
+		quoted, err := strconv.QuotedPrefix(args)
+		if err != nil {
+			return "", "", fmt.Errorf("replay embed pattern: %w", err)
+		}
+		pattern, unquoteErr := strconv.Unquote(quoted)
+		if unquoteErr != nil {
+			return "", "", fmt.Errorf("replay embed quote: %w", unquoteErr)
+		}
+		return pattern, args[len(quoted):], nil
+	}
+	end := strings.IndexFunc(args, unicode.IsSpace)
+	if end < 0 {
+		end = len(args)
+	}
+	return args[:end], args[end:], nil
+}
+
+func (snapshot fixSnapshot) copyEmbedPattern(module *os.Root, source, root, dir, pattern string) error {
+	pattern = strings.TrimPrefix(pattern, "all:")
+	if !fs.ValidPath(pattern) {
+		return fmt.Errorf("replay embed pattern %q: %w", pattern, fs.ErrInvalid)
+	}
+	matches, err := filepath.Glob(filepath.Join(source, dir, pattern))
+	if err != nil {
+		return fmt.Errorf("replay embed glob: %w", err)
+	}
+	for _, match := range matches {
+		path, relErr := filepath.Rel(source, match)
+		if relErr != nil {
+			return fmt.Errorf("replay embed path: %w", relErr)
+		}
+		copyErr := snapshot.copyEmbedTarget(module, root, filepath.ToSlash(path))
+		if copyErr != nil {
+			return copyErr
+		}
+	}
+	return nil
+}
+
+func (snapshot fixSnapshot) copyEmbedTarget(module *os.Root, root, target string) error {
+	err := fs.WalkDir(module.FS(), target, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if _, exists := snapshot[path]; exists {
+			return nil
+		}
+		file := fixSnapshot{}
+		saveErr := file.save(module, path, entry)
+		if saveErr != nil {
+			return saveErr
+		}
+		if saved, exists := file[path]; exists {
+			return writeSaved(root, path, saved)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("copy replay embed %s: %w", target, err)
+	}
+	return nil
 }
 
 func (snapshot fixSnapshot) save(module *os.Root, path string, entry fs.DirEntry) error {
@@ -229,7 +376,7 @@ func (g *gateCtx) offendingFixers(
 		return fallback
 	}
 	defer func() { _ = os.RemoveAll(root) }() //nolint:errcheck // replay cleanup cannot affect the restored module
-	copyErr := snapshot.files.restore(root)
+	copyErr := snapshot.files.copyReplay(".", root)
 	if copyErr != nil {
 		return fallback
 	}

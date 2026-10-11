@@ -30,6 +30,20 @@ const (
 	untouchedSource   = "untouched/source.go"
 	testOnlySource    = "tests/source_test.go"
 	goBinEnv          = "GOBIN"
+	largeFixture      = "large.bin"
+	fixerNotes        = "notes.txt"
+	createdNotes      = "created.txt"
+	createdSource     = "created.go"
+	embedData         = "nested/data.txt"
+	nestedSource      = "nested/source.go"
+	embedContents     = "embedded data"
+)
+
+const (
+	brokenCulpritLabel = "(offending linters: brokenfix)"
+	rootBuildCommand   = "build ./."
+	nestedBuildCommand = "build ./nested"
+	nestedVetCommand   = "vet ./nested"
 )
 
 const brokenReport = `{"Issues":[{"FromLinter":"brokenfix","Text":"broken edit",` +
@@ -203,7 +217,7 @@ func TestAutofixNamesOnlyTheBrokenCandidate(t *testing.T) {
 	if err == nil {
 		t.Fatal("the broken candidate must fail the fix transaction")
 	}
-	if !errors.Is(err, ErrGate) || !strings.Contains(err.Error(), "(offending linters: brokenfix)") {
+	if !errors.Is(err, ErrGate) || !strings.Contains(err.Error(), brokenCulpritLabel) {
 		t.Fatalf("only the broken candidate must be named: %v", err)
 	}
 	assertSnapshotRestored(t, before, root)
@@ -309,7 +323,7 @@ func TestAutofixReplayBuildCountsAndPackageScope(t *testing.T) {
 	trace.snapshot = snapshot
 	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
 	findings := []diag.Diagnostic{
-		{File: "nested/source.go", Linter: cleanFixer, Rule: "", Line: 1},
+		{File: nestedSource, Linter: cleanFixer, Rule: "", Line: 1},
 		{File: shapeSource, Linter: brokenFixer, Rule: "", Line: 1},
 		{File: shapeTest, Linter: noopFixer, Rule: "", Line: 1},
 	}
@@ -318,7 +332,7 @@ func TestAutofixReplayBuildCountsAndPackageScope(t *testing.T) {
 	if culprits != offendingLinters+brokenFixer {
 		t.Fatalf("exact culprit set: %s", culprits)
 	}
-	want := []string{"build ./...", "vet ./...", "build ./.", "build ./nested", "vet ./nested"}
+	want := []string{"build ./...", "vet ./...", rootBuildCommand, nestedBuildCommand, nestedVetCommand}
 	if !slices.Equal(trace.commands, want) {
 		t.Fatalf("one baseline build, two scoped builds and zero noop builds: got %v, want %v", trace.commands, want)
 	}
@@ -361,5 +375,160 @@ func TestAutofixChangedPackagesIncludeTestsAndDeletions(t *testing.T) {
 	}
 	if unchanged := changedFixPackages(before, before); len(unchanged) != 0 {
 		t.Fatalf("unchanged files must not trigger validation: %v", unchanged)
+	}
+}
+
+func writeFixFixture(t *testing.T, root, path string, data []byte) {
+	t.Helper()
+	err := writeSaved(root, path, savedFile{data: data, mode: configMode})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAutofixSnapshotIncludesOnlyWritableFiles(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	want := []string{
+		fileGoMod, fileGoSum, fileGoWork, fileGoWorkSum,
+		"nested/go.mod", "nested/go.sum", "nested/go.work", "nested/go.work.sum", "nested/source_test.go", shapeSource,
+	}
+	for _, path := range want {
+		writeFixFixture(t, root, path, []byte("saved"))
+	}
+	for _, path := range []string{".git/ignored.go", "nested/node_modules/ignored.go", "source.go.bak", fixerNotes} {
+		writeFixFixture(t, root, path, []byte("ignored"))
+	}
+	snapshot, err := snapshotTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, len(snapshot))
+	for path := range snapshot {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	slices.Sort(want)
+	if !slices.Equal(paths, want) {
+		t.Fatalf("snapshot must contain only writable files outside skipped directories: got %v, want %v", paths, want)
+	}
+}
+
+func TestAutofixRollbackPreservesNonGoFixerWrites(t *testing.T) {
+	t.Setenv(goWorkEnv, goWorkOff)
+	root := copyAutofixFixture(t)
+	t.Chdir(root)
+	cfg := writeAutofixConfig(t)
+	large := bytes.Repeat([]byte("fixture"), 1<<20)
+	writeFixFixture(t, root, largeFixture, large)
+	writeFixFixture(t, root, fixerNotes, []byte("before"))
+	before, snapshotErr := snapshotTree(root)
+	if snapshotErr != nil {
+		t.Fatal(snapshotErr)
+	}
+	for _, path := range []string{largeFixture, fixerNotes, fixtureConfig} {
+		if _, exists := before[path]; exists {
+			t.Fatalf("non-Go file must not enter the snapshot: %s", path)
+		}
+	}
+	toolDir := t.TempDir()
+	t.Setenv(goBinEnv, toolDir)
+	script := "#!/bin/sh\ncase \" $* \" in\n*' --fix '*)\n" +
+		"printf 'after' > notes.txt\nprintf 'new' > created.txt\n" +
+		"printf 'package autofix\\nvar Broken = missing\\n' > created.go;;\n" +
+		"esac\nprintf '%s\\n' '" + brokenReport + "'\n"
+	writeFixFixture(t, toolDir, golangciBin, []byte(script))
+	chmodErr := os.Chmod(filepath.Join(toolDir, golangciBin), privateDirMode)
+	if chmodErr != nil {
+		t.Fatal(chmodErr)
+	}
+	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
+	err := g.safeFix()
+	if err == nil {
+		t.Fatal("the corrupting fixer must fail")
+	}
+	if !errors.Is(err, ErrGate) || !strings.Contains(err.Error(), brokenCulpritLabel) {
+		t.Fatalf("the failed pass must retain refusal and culprit attribution: %v", err)
+	}
+	assertSnapshotRestored(t, before, root)
+	assertFixFixtureData(t, root, largeFixture, large)
+	assertFixFixtureData(t, root, fixerNotes, []byte("after"))
+	assertFixFixtureData(t, root, createdNotes, []byte("new"))
+	_, statErr := os.Stat(filepath.Join(root, createdSource))
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("restore must remove created Go source: %v", statErr)
+	}
+}
+
+func assertFixFixtureData(t *testing.T, root, path string, want []byte) {
+	t.Helper()
+	module, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeErr := module.Close()
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+	})
+	data, err := module.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, want) {
+		t.Fatalf("unexpected contents of %s after replay or rollback", path)
+	}
+}
+
+func TestAutofixReplayCopiesEmbedTargets(t *testing.T) {
+	t.Setenv(goWorkEnv, goWorkOff)
+	root := copyAutofixFixture(t)
+	t.Chdir(root)
+	cfg := writeAutofixConfig(t)
+	source := "package nested\nimport \"embed\"\n" + embedDirective + " data.txt\nvar Data string\n" +
+		embedDirective + " \"spaced name.txt\" `raw name.txt` assets/*.txt tree all:hidden\nvar Files embed.FS\n"
+	writeFixFixture(t, root, nestedSource, []byte(source))
+	writeFixFixture(t, root, embedData, []byte(embedContents))
+	for _, path := range []string{
+		"nested/spaced name.txt", "nested/raw name.txt", "nested/assets/file.txt", "nested/tree/deep/file.txt",
+		"nested/hidden/.secret",
+	} {
+		writeFixFixture(t, root, path, []byte("extra embed target"))
+	}
+	writeFixFixture(t, root, largeFixture, []byte("unneeded build output"))
+	verifyErr := verifyFix(t.Context(), root)
+	if verifyErr != nil {
+		t.Fatal(verifyErr)
+	}
+	snapshot, err := snapshotTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := snapshot[embedData]; exists {
+		t.Fatal("embed targets must be copied separately from the rollback snapshot")
+	}
+	trace := &replayTrace{commands: nil, linters: nil, root: "", snapshot: snapshot, test: t}
+	command := func(ctx context.Context, replayRoot, program string, args ...string) ([]byte, error) {
+		if program != goCmd {
+			assertFixFixtureData(t, replayRoot, embedData, []byte(embedContents))
+			_, statErr := os.Stat(filepath.Join(replayRoot, largeFixture))
+			if !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("replay must omit unrelated non-Go files: %v", statErr)
+			}
+		}
+		return trace.command(ctx, replayRoot, program, args...)
+	}
+	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
+	findings := []diag.Diagnostic{
+		{File: shapeSource, Linter: brokenFixer, Rule: "", Line: 1},
+		{File: nestedSource, Linter: cleanFixer, Rule: "", Line: 1},
+	}
+	culprits := g.offendingFixers(verifiedFixSnapshot{files: snapshot}, findings, errReplayValidation, command)
+	if culprits != offendingLinters+brokenFixer {
+		t.Fatalf("the compiling embed package must not be blamed: %s", culprits)
+	}
+	if !slices.Equal(trace.commands, []string{rootBuildCommand, nestedBuildCommand, nestedVetCommand}) {
+		t.Fatalf("replay must compile and vet the package containing the embed: %v", trace.commands)
 	}
 }
