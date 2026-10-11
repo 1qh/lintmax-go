@@ -49,6 +49,10 @@ const (
 	disableFlag             = "--disable"
 	gitDir                  = ".git"
 	noinlineerrLinter       = "noinlineerr"
+	fatcontextLinter        = "fatcontext"
+	gocriticLinter          = "gocritic"
+	testifylintLinter       = "testifylint"
+	unsafeAutofixLinters    = fatcontextLinter + "," + gocriticLinter + "," + noinlineerrLinter + "," + testifylintLinter
 	binSubdir               = "bin"
 	cmdInstall              = "install"
 	golangciBin             = "golangci-lint"
@@ -536,7 +540,7 @@ func golangciArgs(cfg string, fix, ci bool) []string {
 		golangciRunnerFlag(ci),
 	}
 	if fix {
-		args = append(args, fixFlag, disableFlag, noinlineerrLinter)
+		args = append(args, fixFlag, disableFlag, unsafeAutofixLinters)
 	}
 	return args
 }

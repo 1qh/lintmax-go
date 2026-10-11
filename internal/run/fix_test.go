@@ -83,7 +83,8 @@ func TestAutofixExcludesOnlyTheBrokenFix(t *testing.T) {
 	fix := golangciArgs(fixtureConfig, true, false)
 	check := golangciArgs(fixtureConfig, false, false)
 	at := slices.Index(fix, disableFlag)
-	if at < 0 || at+1 >= len(fix) || fix[at+1] != noinlineerrLinter || !slices.Contains(fix, fixFlag) {
+	if at < 0 || at+1 >= len(fix) || fix[at+1] != unsafeAutofixLinters ||
+		!slices.Contains(fix, fixFlag) {
 		t.Fatalf("the write pass must exclude noinlineerr: %v", fix)
 	}
 	if slices.Contains(check, fixFlag) || slices.Contains(check, disableFlag) ||
