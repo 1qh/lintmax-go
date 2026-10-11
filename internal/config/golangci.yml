@@ -55,6 +55,10 @@ linters:
       # cannot win, so the rewrite is off until the scanner catches up.
       disable:
         - newexpr
+        # `embedlit` collapses an explicit embedded-struct literal into Go 1.27 promoted fields, which
+        # exhaustruct then reports as the embedded field missing; exhaustruct (every field set) is the
+        # correctness rule, so the style rewrite loses until exhaustruct understands promoted fields.
+        - embedlit
     mnd:
       ignored-numbers: ["0", "1"]
     errcheck:
