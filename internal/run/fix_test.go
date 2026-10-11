@@ -128,6 +128,9 @@ func assertAutofixRollback(t *testing.T, mutation string) {
 	}
 	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
 	err = g.safeFix()
+	if err == nil {
+		t.Fatal("a corrupting fixer must fail")
+	}
 	if !errors.Is(err, ErrGate) || !strings.Contains(err.Error(), "offending linters: brokenfix") {
 		t.Fatalf("a corrupting fixer must fail and identify its linter: %v", err)
 	}
