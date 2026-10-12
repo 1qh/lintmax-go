@@ -39,20 +39,22 @@ import (
 )
 
 const (
-	emptyArg                = ""
-	goCmd                   = "go"
-	configMode              = 0o600
-	refreshTTL              = 24 * time.Hour
-	cmdTest                 = "test"
-	cmdVet                  = "vet"
-	fixFlag                 = "--fix"
-	disableFlag             = "--disable"
-	gitDir                  = ".git"
-	noinlineerrLinter       = "noinlineerr"
-	fatcontextLinter        = "fatcontext"
-	gocriticLinter          = "gocritic"
-	testifylintLinter       = "testifylint"
-	unsafeAutofixLinters    = fatcontextLinter + "," + gocriticLinter + "," + noinlineerrLinter + "," + testifylintLinter
+	emptyArg             = ""
+	goCmd                = "go"
+	configMode           = 0o600
+	refreshTTL           = 24 * time.Hour
+	cmdTest              = "test"
+	cmdVet               = "vet"
+	fixFlag              = "--fix"
+	disableFlag          = "--disable"
+	gitDir               = ".git"
+	noinlineerrLinter    = "noinlineerr"
+	dupwordLinter        = "dupword"
+	fatcontextLinter     = "fatcontext"
+	gocriticLinter       = "gocritic"
+	testifylintLinter    = "testifylint"
+	unsafeAutofixLinters = dupwordLinter + "," + fatcontextLinter + "," + gocriticLinter + "," +
+		noinlineerrLinter + "," + testifylintLinter
 	binSubdir               = "bin"
 	cmdInstall              = "install"
 	golangciBin             = "golangci-lint"
