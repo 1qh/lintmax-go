@@ -69,4 +69,9 @@ func TestNoteNamesThePackageAndTheCapability(t *testing.T) {
 	if !strings.Contains(got, "GAINED") {
 		t.Fatalf("the note must say the capability is new, got %q", got)
 	}
+	want := "  (run lintmax-go fix and commit " + caps.BaselineFile +
+		" to accept the gained set as the baseline once the change is understood)"
+	if !strings.HasSuffix(got, want) {
+		t.Fatalf("the note must explain how to accept the gained set, got %q", got)
+	}
 }

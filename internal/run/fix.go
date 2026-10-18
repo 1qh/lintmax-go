@@ -14,8 +14,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
+	"github.com/1qh/lintmax-go/internal/caps"
 	"github.com/1qh/lintmax-go/internal/diag"
 )
 
@@ -28,6 +30,7 @@ const (
 	fileGoSum        = "go.sum"
 	fileGoWork       = "go.work"
 	fileGoWorkSum    = "go.work.sum"
+	errorDetailFmt   = "%w: %s"
 )
 
 var ErrSnapshotSource = errors.New("cannot snapshot non-regular Go source")
@@ -223,7 +226,7 @@ func (snapshot fixSnapshot) save(module *os.Root, path string, entry fs.DirEntry
 	}
 	if !info.Mode().IsRegular() {
 		if strings.HasSuffix(path, goExt) {
-			return fmt.Errorf("%w: %s", ErrSnapshotSource, path)
+			return fmt.Errorf(errorDetailFmt, ErrSnapshotSource, path)
 		}
 		return nil
 	}
@@ -508,4 +511,43 @@ func replayConfig(cfg, name string) (string, string) {
 		return cfg[:start] + formatter + cfg[end:], "ineffassign"
 	}
 	return cfg[:start] + formattersKey + "  enable: []\n" + cfg[end:], name
+}
+
+func (g *gateCtx) fixWithCapabilities() error {
+	var entries []string
+	var note string
+	var readable bool
+	var wg sync.WaitGroup
+	wg.Go(func() { entries, note, readable = scanCapabilities(g.ctx) })
+	fixErr := g.safeFix()
+	wg.Wait()
+	if fixErr != nil {
+		return fixErr
+	}
+	if note != "" {
+		return fmt.Errorf(errorDetailFmt, ErrGate, note)
+	}
+	if !readable {
+		return nil
+	}
+	err := caps.WriteBaseline(caps.BaselineFile, entries)
+	if err != nil {
+		return fmt.Errorf("write capability baseline after fix: %w", err)
+	}
+	return nil
+}
+
+func (g *gateCtx) refreshCapabilities() error {
+	entries, note, readable := scanCapabilities(g.ctx)
+	if note != "" {
+		return fmt.Errorf(errorDetailFmt, ErrGate, note)
+	}
+	if !readable {
+		return nil
+	}
+	err := caps.WriteBaseline(caps.BaselineFile, entries)
+	if err != nil {
+		return fmt.Errorf("refresh capability baseline: %w", err)
+	}
+	return nil
 }

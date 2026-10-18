@@ -126,7 +126,7 @@ func reportBumps(ctx context.Context, installed []tools.Tool) {
 	prev := state.Load()
 	next := state.State{
 		Versions: map[string]string{}, LastCheck: time.Time{},
-		LastGreenByCWD: prev.LastGreenByCWD, CapsByCWD: prev.CapsByCWD,
+		LastGreenByCWD: prev.LastGreenByCWD,
 	}
 	for _, tool := range installed {
 		ver := toolVersion(ctx, bin(tool.Name))
@@ -437,40 +437,40 @@ func transformGate(fix bool) ([]string, error) {
 	return changed, nil
 }
 
-func capsKey(cwd, analyser string) string {
-	return cwd + "\x00" + analyser
-}
-
-func capabilityScan(ctx context.Context) string {
+func scanCapabilities(ctx context.Context) ([]string, string, bool) {
 	out, errOut, ok := runSeparate(ctx, bin(binCapslock), "-packages", allPackages, "-output=json")
 	if !ok {
 		if bytes.Contains(errOut, []byte(ssaPanicMarker)) {
 			fmt.Fprintln(os.Stderr, capslockUnreadable)
-			return ""
+			return nil, "", false
 		}
-		return binCapslock + ":\n" + tailLines(append(out, errOut...), tailDefault)
+		return nil, binCapslock + ":\n" + tailLines(append(out, errOut...), tailDefault), false
 	}
 	now := caps.Set(out)
-	if len(now) == 0 {
-		return ""
+	if now == nil {
+		return nil, binCapslock + ": invalid capability report", false
 	}
-	cwd, cwErr := os.Getwd()
-	if cwErr != nil {
-		return ""
+	return now, "", true
+}
+
+func capabilityScan(ctx context.Context) string {
+	_, baselineErr := os.Stat(caps.BaselineFile)
+	if errors.Is(baselineErr, os.ErrNotExist) {
+		note, err := caps.CheckBaseline(caps.BaselineFile, nil)
+		if err != nil {
+			return err.Error()
+		}
+		return binCapslock + ": " + note
 	}
-	st := state.Load()
-	key := capsKey(cwd, st.Versions[binCapslock])
-	before, seen := st.CapsByCWD[key]
-	st.CapsByCWD[key] = now
-	_ = st.Save() //nolint:errcheck // best-effort baseline
-	if !seen {
-		return ""
+	now, note, readable := scanCapabilities(ctx)
+	if !readable {
+		return note
 	}
-	gained := caps.Gained(before, now)
-	if len(gained) == 0 {
-		return ""
+	note, err := caps.CheckBaseline(caps.BaselineFile, now)
+	if err != nil {
+		return err.Error()
 	}
-	return caps.Note(gained)
+	return note
 }
 
 func deepScan(ctx context.Context, deep bool) []string {
@@ -689,7 +689,11 @@ func Gate(ctx context.Context, fix bool) error {
 }
 
 func (g *gateCtx) tryCached() bool {
-	if !g.skipCheck || g.greenKey == "" {
+	if !g.fix || !g.skipCheck || g.greenKey == "" {
+		return false
+	}
+	_, baselineErr := os.Stat(caps.BaselineFile)
+	if baselineErr != nil {
 		return false
 	}
 	prev := state.Load()
@@ -700,13 +704,16 @@ func (g *gateCtx) tryCached() bool {
 	if prev.LastGreenByCWD[cwd] != g.greenKey {
 		return false
 	}
+	if g.refreshCapabilities() != nil {
+		return false
+	}
 	_, writeErr := fmt.Fprintln(os.Stdout, "ok (cached)")
 	return writeErr == nil
 }
 
 func (g *gateCtx) runGate() error {
 	if g.fix {
-		fixErr := g.safeFix()
+		fixErr := g.fixWithCapabilities()
 		if fixErr != nil {
 			return fixErr
 		}
@@ -972,7 +979,8 @@ func skipNoise(name string) error {
 }
 
 func relevantHashFile(path string) bool {
-	return strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".mod") || strings.HasSuffix(path, ".sum")
+	return filepath.Base(path) == caps.BaselineFile || strings.HasSuffix(path, ".go") ||
+		strings.HasSuffix(path, ".mod") || strings.HasSuffix(path, ".sum")
 }
 
 func hashWrite(h hash.Hash, s string) {
