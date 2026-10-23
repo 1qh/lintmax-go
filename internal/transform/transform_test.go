@@ -69,3 +69,11 @@ func TestCompactKeepsTheFormatterSeparatorAfterAnEmbeddedField(t *testing.T) {
 		t.Fatalf("Compact is not a fixed point:\n%q", again)
 	}
 }
+
+func TestCompactKeepsBlankLinesInsideRawStrings(t *testing.T) {
+	t.Parallel()
+	const src = "package x\n\nfunc f() string {\n\treturn `a\n\nb\n\n\n\nc`\n}\n\nvar v = `d\n\n\n\ne`\n"
+	if got := string(transform.Compact([]byte(src))); got != src {
+		t.Fatalf("a raw string literal is a value, so its blank lines must survive:\n%q\ngot\n%q", src, got)
+	}
+}
