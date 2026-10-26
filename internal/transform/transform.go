@@ -40,7 +40,7 @@ func deletable(src []byte) []commentRange {
 			continue
 		}
 		start := file.Offset(pos)
-		out = append(out, commentRange{start: start, end: start + len(lit)})
+		out = append(out, commentRange{start: start, end: sourceTokenEnd(src, start, tok, lit)})
 	}
 }
 
@@ -91,13 +91,6 @@ func bodySpans(src []byte) ([]commentRange, []commentRange) {
 		if isStruct {
 			keeps = append(keeps, embeddedSeparators(fset, st)...)
 		}
-		lit, isLit := node.(*ast.BasicLit)
-		if isLit && lit.Kind == token.STRING && strings.HasPrefix(lit.Value, "`") {
-			keeps = append(keeps, commentRange{
-				start: fset.Position(lit.Pos()).Offset,
-				end:   fset.Position(lit.End()).Offset,
-			})
-		}
 		return true
 	})
 	return spans, keeps
@@ -134,6 +127,7 @@ func removeBodyBlanks(src []byte) []byte {
 	if len(spans) == 0 {
 		return src
 	}
+	keeps = append(keeps, protectedTokens(src)...)
 	out := make([]byte, 0, len(src))
 	lineStart := 0
 	for pos := 0; pos <= len(src); pos++ {
@@ -155,7 +149,7 @@ func removeBodyBlanks(src []byte) []byte {
 
 func Compact(src []byte) []byte {
 	body := removeBodyBlanks(src)
-	literals := rawLiterals(body)
+	literals := protectedTokens(body)
 	out := make([]byte, 0, len(body))
 	cursor := 0
 	for _, literal := range literals {
@@ -166,20 +160,42 @@ func Compact(src []byte) []byte {
 	return append(out, multiNewline.ReplaceAll(body[cursor:], []byte("\n\n"))...)
 }
 
-func rawLiterals(src []byte) []commentRange {
+func protectedTokens(src []byte) []commentRange {
 	fset := token.NewFileSet()
 	file := fset.AddFile("", fset.Base(), len(src))
 	var sc scanner.Scanner
-	sc.Init(file, src, nil, 0)
+	sc.Init(file, src, nil, scanner.ScanComments)
 	var out []commentRange
 	for {
 		pos, tok, lit := sc.Scan()
 		if tok == token.EOF {
 			return out
 		}
-		if tok == token.STRING && strings.HasPrefix(lit, "`") {
+		if tok == token.STRING || tok == token.COMMENT {
 			start := file.Offset(pos)
-			out = append(out, commentRange{start: start, end: start + len(lit)})
+			out = append(out, commentRange{start: start, end: sourceTokenEnd(src, start, tok, lit)})
 		}
 	}
+}
+
+func sourceTokenEnd(src []byte, start int, tok token.Token, lit string) int {
+	var prefix, suffix string
+	switch {
+	case tok == token.STRING && src[start] == '`':
+		prefix, suffix = "`", "`"
+	case tok == token.COMMENT && bytes.HasPrefix(src[start:], []byte("/*")):
+		prefix, suffix = "/*", "*/"
+	case tok == token.COMMENT:
+		if end := bytes.IndexByte(src[start:], '\n'); end >= 0 {
+			return start + end
+		}
+		return len(src)
+	default:
+		return start + len(lit)
+	}
+	end := bytes.Index(src[start+len(prefix):], []byte(suffix))
+	if end < 0 {
+		return len(src)
+	}
+	return start + len(prefix) + end + len(suffix)
 }
