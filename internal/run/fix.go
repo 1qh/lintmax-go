@@ -333,22 +333,48 @@ func (g *gateCtx) safeFix() error {
 	fixed := collectGolangci(g.ctx, golangciArgs(g.cfg, true, inCI()))
 	validationErr := verifyFix(g.ctx, ".")
 	if validationErr != nil {
-		restoreErr := snapshot.restore(".")
-		proven := verifiedFixSnapshot{files: snapshot}
-		culprits := g.offendingFixers(proven, before.diags, validationErr, runFixCommand)
-		rollback := "restored the pre-fix snapshot"
-		if restoreErr != nil {
-			rollback = "rollback incomplete"
-		}
-		return errors.Join(
-			fmt.Errorf("%w: golangci-lint autofix failed (%s); %s:\n%w", ErrGate, culprits, rollback, validationErr),
-			restoreErr,
-		)
+		return g.recoverFix(snapshot, before.diags, validationErr)
 	}
 	if len(fixed.notes) > 0 {
 		return errors.Join(fmt.Errorf("%w: autofix: %s", ErrGate, strings.Join(fixed.notes, "\n")), snapshot.restore("."))
 	}
 	return nil
+}
+
+func (g *gateCtx) recoverFix(snapshot fixSnapshot, findings []diag.Diagnostic, validationErr error) error {
+	restoreErr := snapshot.restore(".")
+	if restoreErr != nil {
+		return errors.Join(report(findings, []string{"autofix rollback incomplete"}), restoreErr)
+	}
+	culprits := g.offendingFixers(verifiedFixSnapshot{files: snapshot}, findings, validationErr, runFixCommand)
+	names, attributed := strings.CutPrefix(culprits, offendingLinters)
+	if attributed {
+		_, transformErr := transformGate(true)
+		if transformErr == nil {
+			args := golangciArgs(g.cfg, true, inCI())
+			at := slices.Index(args, disableFlag)
+			args[at+1] += "," + strings.ReplaceAll(names, ", ", ",")
+			fixed := collectGolangci(g.ctx, args)
+			if len(fixed.notes) == 0 && verifyFix(g.ctx, ".") == nil {
+				remaining := collectGolangci(g.ctx, golangciArgs(g.cfg, false, inCI()))
+				if len(remaining.notes) == 0 {
+					return reportRevertedFix(remaining.diags, culprits, validationErr)
+				}
+			}
+		}
+		restoreErr = snapshot.restore(".")
+	}
+	return errors.Join(reportRevertedFix(findings, culprits, validationErr), restoreErr)
+}
+
+func reportRevertedFix(findings []diag.Diagnostic, culprits string, validationErr error) error {
+	note := revertedFixNote(culprits, validationErr)
+	return fmt.Errorf("%w: %s", report(findings, []string{note}), note)
+}
+
+func revertedFixNote(culprits string, validationErr error) string {
+	reason := strings.Join(strings.Fields(validationErr.Error()), " ")
+	return "autofix reverted (" + culprits + "): " + reason
 }
 
 func autofixNames(findings []diag.Diagnostic, args []string) []string {
