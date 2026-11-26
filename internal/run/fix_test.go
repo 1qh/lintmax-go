@@ -546,15 +546,17 @@ func captureFixReport(t *testing.T, action func() error) (string, error) {
 	t.Cleanup(func() { os.Stderr = original })
 	actionErr := action()
 	os.Stderr = original
-	if closeErr := writer.Close(); closeErr != nil {
-		t.Fatal(closeErr)
+	writerCloseErr := writer.Close()
+	if writerCloseErr != nil {
+		t.Fatal(writerCloseErr)
 	}
 	out, readErr := io.ReadAll(reader)
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if closeErr := reader.Close(); closeErr != nil {
-		t.Fatal(closeErr)
+	readerCloseErr := reader.Close()
+	if readerCloseErr != nil {
+		t.Fatal(readerCloseErr)
 	}
 	return string(out), actionErr
 }
@@ -564,7 +566,7 @@ func TestAutofixPerfsprintAddsImportAndReportsFindings(t *testing.T) {
 	root := copyAutofixFixture(t)
 	t.Chdir(root)
 	cfg := writeAutofixConfig(t)
-	raw, err := os.ReadFile(cfg)
+	raw, err := os.ReadFile(cfg) //nolint:gosec // the test's own temp config path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +575,8 @@ func TestAutofixPerfsprintAddsImportAndReportsFindings(t *testing.T) {
 	const source = "package autofix\nimport \"fmt\"\nfunc Number(intVar int) string { return fmt.Sprint(intVar) }\n"
 	writeFixFixture(t, root, createdSource, []byte(source))
 	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
-	if fixErr := g.safeFix(); fixErr != nil {
+	fixErr := g.safeFix()
+	if fixErr != nil {
 		t.Fatal(fixErr)
 	}
 	data, readErr := os.ReadFile(createdSource)
@@ -583,12 +586,14 @@ func TestAutofixPerfsprintAddsImportAndReportsFindings(t *testing.T) {
 	if !bytes.Contains(data, []byte("strconv.Itoa(intVar)")) || !bytes.Contains(data, []byte("\"strconv\"")) {
 		t.Fatalf("perfsprint must keep its rewrite and add the import: %s", data)
 	}
-	if compileErr := verifyFix(t.Context(), root); compileErr != nil {
+	compileErr := verifyFix(t.Context(), root)
+	if compileErr != nil {
 		t.Fatal(compileErr)
 	}
 	remaining := collectGolangci(t.Context(), golangciArgs(cfg, false, false))
 	out, reportErr := captureFixReport(t, func() error { return report(remaining.diags, remaining.notes) })
-	if !errors.Is(reportErr, ErrGate) || !strings.Contains(out, "noinlineerr:") || strings.Contains(out, "undefined: strconv") {
+	if !errors.Is(reportErr, ErrGate) || !strings.Contains(out, "noinlineerr:") ||
+		strings.Contains(out, "undefined: strconv") {
 		t.Fatalf("normal findings must survive the import repair: %s (%v)", out, reportErr)
 	}
 }
@@ -606,14 +611,17 @@ func TestAutofixRecoveryKeepsCompilingFixAndReportsOriginal(t *testing.T) {
 	script := "#!/bin/sh\ncase \" $* \" in\n" +
 		"*' --fix '*' --enable-only cleanfix '*) printf 'package autofix\\nvar Clean = 2\\n' > created.go;;\n" +
 		"*' --fix '*'brokenfix,cleanfix'*) ;;\n" +
-		"*' --fix '*'" + unsafeAutofixLinters + ",brokenfix'*) printf 'package autofix\\nvar Clean = 2\\n' > created.go;;\n" +
+		"*' --fix '*'" + unsafeAutofixLinters + ",brokenfix'*) " +
+		"printf 'package autofix\\nvar Clean = 2\\n' > created.go;;\n" +
 		"*' --fix '*) printf 'package autofix\\nvar Broken = missing\\nvar Clean = 2\\n' > created.go;;\n" +
 		"esac\nif [ -f created.go ] && ! grep -q missing created.go; then\n" +
-		"printf '%s\\n' '{\"Issues\":[{\"FromLinter\":\"brokenfix\",\"Text\":\"broken edit\",\"Pos\":{\"Filename\":\"created.go\",\"Line\":2}}]}'\n" +
+		"printf '%s\\n' '{\"Issues\":[{\"FromLinter\":\"brokenfix\",\"Text\":\"broken edit\"," +
+		"\"Pos\":{\"Filename\":\"created.go\",\"Line\":2}}]}'\n" +
 		"else\nprintf '%s\\n' '" + reportJSON + "'\nfi\n"
 	writeFixFixture(t, toolDir, golangciBin, []byte(script))
-	if err := os.Chmod(filepath.Join(toolDir, golangciBin), privateDirMode); err != nil {
-		t.Fatal(err)
+	chmodErr := os.Chmod(filepath.Join(toolDir, golangciBin), privateDirMode)
+	if chmodErr != nil {
+		t.Fatal(chmodErr)
 	}
 	g := &gateCtx{ctx: t.Context(), timing: false, fix: true, cfg: cfg, skipCheck: false, greenKey: ""}
 	out, fixErr := captureFixReport(t, g.safeFix)
@@ -622,7 +630,8 @@ func TestAutofixRecoveryKeepsCompilingFixAndReportsOriginal(t *testing.T) {
 		t.Fatalf("recovery must report the original finding and culprit: %s (%v)", out, fixErr)
 	}
 	assertFixFixtureData(t, root, createdSource, []byte("package autofix\nvar Clean = 2\n"))
-	if compileErr := verifyFix(t.Context(), root); compileErr != nil {
+	compileErr := verifyFix(t.Context(), root)
+	if compileErr != nil {
 		t.Fatal(compileErr)
 	}
 }
@@ -639,8 +648,9 @@ func TestAutofixUnattributedFailureRestoresAndReportsFindings(t *testing.T) {
 		"*' --fix '*) printf 'package autofix\\nvar Broken = missing\\n' > created.go;;\n" +
 		"esac\nprintf '%s\\n' '" + brokenReport + "'\n"
 	writeFixFixture(t, toolDir, golangciBin, []byte(script))
-	if err := os.Chmod(filepath.Join(toolDir, golangciBin), privateDirMode); err != nil {
-		t.Fatal(err)
+	chmodErr := os.Chmod(filepath.Join(toolDir, golangciBin), privateDirMode)
+	if chmodErr != nil {
+		t.Fatal(chmodErr)
 	}
 	before, err := snapshotTree(root)
 	if err != nil {
@@ -653,7 +663,8 @@ func TestAutofixUnattributedFailureRestoresAndReportsFindings(t *testing.T) {
 		t.Fatalf("unattributed edits must retain original findings and explain rollback: %s (%v)", out, fixErr)
 	}
 	assertSnapshotRestored(t, before, root)
-	if compileErr := verifyFix(t.Context(), root); compileErr != nil {
+	compileErr := verifyFix(t.Context(), root)
+	if compileErr != nil {
 		t.Fatal(compileErr)
 	}
 }

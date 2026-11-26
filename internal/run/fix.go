@@ -349,22 +349,32 @@ func (g *gateCtx) recoverFix(snapshot fixSnapshot, findings []diag.Diagnostic, v
 	culprits := g.offendingFixers(verifiedFixSnapshot{files: snapshot}, findings, validationErr, runFixCommand)
 	names, attributed := strings.CutPrefix(culprits, offendingLinters)
 	if attributed {
-		_, transformErr := transformGate(true)
-		if transformErr == nil {
-			args := golangciArgs(g.cfg, true, inCI())
-			at := slices.Index(args, disableFlag)
-			args[at+1] += "," + strings.ReplaceAll(names, ", ", ",")
-			fixed := collectGolangci(g.ctx, args)
-			if len(fixed.notes) == 0 && verifyFix(g.ctx, ".") == nil {
-				remaining := collectGolangci(g.ctx, golangciArgs(g.cfg, false, inCI()))
-				if len(remaining.notes) == 0 {
-					return reportRevertedFix(remaining.diags, culprits, validationErr)
-				}
-			}
+		remaining, finished := g.retryWithout(names)
+		if finished {
+			return reportRevertedFix(remaining, culprits, validationErr)
 		}
 		restoreErr = snapshot.restore(".")
 	}
 	return errors.Join(reportRevertedFix(findings, culprits, validationErr), restoreErr)
+}
+
+func (g *gateCtx) retryWithout(names string) ([]diag.Diagnostic, bool) {
+	_, transformErr := transformGate(true)
+	if transformErr != nil {
+		return nil, false
+	}
+	args := golangciArgs(g.cfg, true, inCI())
+	at := slices.Index(args, disableFlag)
+	args[at+1] += "," + strings.ReplaceAll(names, ", ", ",")
+	fixed := collectGolangci(g.ctx, args)
+	if len(fixed.notes) != 0 || verifyFix(g.ctx, ".") != nil {
+		return nil, false
+	}
+	remaining := collectGolangci(g.ctx, golangciArgs(g.cfg, false, inCI()))
+	if len(remaining.notes) != 0 {
+		return nil, false
+	}
+	return remaining.diags, true
 }
 
 func reportRevertedFix(findings []diag.Diagnostic, culprits string, validationErr error) error {
